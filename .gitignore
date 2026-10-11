@@ -1,0 +1,32 @@
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Executables & Proprietary Vendor Dumps
+*.exe
+*.dll
+*.pdb
+OnboardMemoryManager*
+logi_nethidppio*
+logs/dotnet_dump/
+
+# Logs & Traces
+*.log
+logs/*.log
+logs/parsed_packets.txt
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.agent/
+*.swp

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logitech HID++ 2.0 WebHID Lab | Hardware Control & Wire Inspector</title>
+    <meta name="description" content="In-browser WebHID engineering console for Logitech G-series peripherals. Control DPI, polling rate, onboard memory profiles, RGB lighting, and inspect live HID++ 2.0 wire frames.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Ambient Glows -->
+    <div class="ambient-glow glow-cyan"></div>
+    <div class="ambient-glow glow-purple"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-logo">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="5" y="2" width="14" height="20" rx="7" />
+                        <line x1="12" y1="6" x2="12" y2="10" />
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1 class="brand-title">LOGITECH <span class="highlight-cyan">HID++ 2.0</span> PROTOCOL LAB</h1>
+                    <p class="brand-subtitle">WebHID Low-Level Interoperability & Peripheral Telemetry Engine</p>
+                </div>
+            </div>
+
+            <div class="header-controls">
+                <div class="device-pill" id="deviceStatusPill">
+                    <span class="status-indicator-dot" id="statusDot"></span>
+                    <div class="status-text-group">
+                        <span class="status-label" id="statusLabel">DISCONNECTED</span>
+                        <span class="device-name-badge" id="deviceNameBadge">No Hardware Bound</span>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button id="btnConnect" class="btn btn-primary">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        Connect WebHID
+                    </button>
+                    <button id="btnSimulate" class="btn btn-secondary">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Simulate G502 HERO
+                    </button>
+                    <button id="btnDisconnect" class="btn btn-danger hidden">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            <!-- Left Column: Controls & Features -->
+            <section class="controls-column">
+                
+                <!-- Card 1: DPI Sensor Engine -->
+                <div class="card glass-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <span class="feature-tag">0x2201</span>
+                            <h2>HERO Optical Sensor & DPI Control</h2>
+                        </div>
+                        <span class="card-badge" id="dpiFeatureBadge">Awaiting Sync</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="dpi-visualizer-container">
+                            <!-- Circular Arc Gauge / Visualizer -->
+                            <div class="dpi-gauge">
+                                <svg class="gauge-svg" viewBox="0 0 200 200">
+                                    <circle class="gauge-bg" cx="100" cy="100" r="82" />
+                                    <circle class="gauge-bar" id="gaugeBar" cx="100" cy="100" r="82" />
+                                </svg>
+                                <div class="gauge-center-content">
+                                    <div class="dpi-value" id="dpiDisplayValue">1600</div>
+                                    <div class="dpi-unit">DPI SENSITIVITY</div>
+                                    <div class="dpi-step-note">STEP: 50 DPI</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Slider and manual adjustment -->
+                            <div class="slider-wrapper">
+                                <div class="slider-labels">
+                                    <span>100 DPI</span>
+                                    <span>12,800 DPI</span>
+                                    <span>25,600 DPI</span>
+                                </div>
+                                <input type="range" id="dpiSlider" min="100" max="25600" step="50" value="1600" class="neon-slider" />
+                            </div>
+                        </div>
+
+                        <!-- Quick Presets -->
+                        <div class="preset-section">
+                            <span class="preset-label">Quick Sensor Presets</span>
+                            <div class="preset-chips">
+                                <button class="chip" data-dpi="400">400</button>
+                                <button class="chip" data-dpi="800">800</button>
+                                <button class="chip" data-dpi="1200">1200</button>
+                                <button class="chip active" data-dpi="1600">1600</button>
+                                <button class="chip" data-dpi="2400">2400</button>
+                                <button class="chip" data-dpi="3200">3200</button>
+                                <button class="chip" data-dpi="6400">6400</button>
+                                <button class="chip" data-dpi="16000">16K</button>
+                            </div>
+                        </div>
+
+                        <div class="command-preview-box">
+                            <span class="preview-title">Wire Command Dispatch Preview:</span>
+                            <code class="hex-preview" id="dpiHexPreview">TX 0x10 FF 07 31 00 06 40 (Function 0x03)</code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Report Rate / Polling Frequency -->
+                <div class="card glass-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <span class="feature-tag">0x8061</span>
+                            <h2>USB Report Rate (Polling Frequency)</h2>
+                        </div>
+                        <span class="card-badge" id="pollingBadge">1000 Hz</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="rate-selector-grid">
+                            <button class="rate-card" data-rate="125" data-mask="0x08">
+                                <span class="rate-val">125 Hz</span>
+                                <span class="rate-desc">8 ms response</span>
+                                <span class="rate-tag">Power Saver</span>
+                            </button>
+                            <button class="rate-card" data-rate="250" data-mask="0x04">
+                                <span class="rate-val">250 Hz</span>
+                                <span class="rate-desc">4 ms response</span>
+                                <span class="rate-tag">Standard</span>
+                            </button>
+                            <button class="rate-card" data-rate="500" data-mask="0x02">
+                                <span class="rate-val">500 Hz</span>
+                                <span class="rate-desc">2 ms response</span>
+                                <span class="rate-tag">Esports</span>
+                            </button>
+                            <button class="rate-card active" data-rate="1000" data-mask="0x01">
+                                <span class="rate-val">1000 Hz</span>
+                                <span class="rate-desc">1 ms response</span>
+                                <span class="rate-tag">Tournament</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dual Sub-Cards: Profiles & RGB -->
+                <div class="card-grid-split">
+                    <!-- Onboard Profiles (0x8100) -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x8100</span>
+                                <h2>Onboard Flash Profiles</h2>
+                            </div>
+                            <span class="card-badge" id="activeProfileBadge">Slot #1 Active</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="section-desc">Manage physical non-volatile EEPROM/Flash sector memory slots directly via HID++ 2.0.</p>
+                            
+                            <div class="slot-tabs" id="profileSlotTabs">
+                                <button class="slot-tab active" data-slot="1">
+                                    <span class="slot-num">1</span>
+                                    <span class="slot-name">Default / FPS</span>
+                                </button>
+                                <button class="slot-tab" data-slot="2">
+                                    <span class="slot-num">2</span>
+                                    <span class="slot-name">MMO / Macros</span>
+                                </button>
+                                <button class="slot-tab" data-slot="3">
+                                    <span class="slot-num">3</span>
+                                    <span class="slot-name">Sniper Low</span>
+                                </button>
+                                <button class="slot-tab" data-slot="4">
+                                    <span class="slot-num">4</span>
+                                    <span class="slot-name">CAD / Productivity</span>
+                                </button>
+                                <button class="slot-tab" data-slot="5">
+                                    <span class="slot-num">5</span>
+                                    <span class="slot-name">General</span>
+                                </button>
+                            </div>
+
+                            <div class="memory-map-box">
+                                <div class="memory-meta">
+                                    <span>Sector Address: <code id="sectorAddr">0x0001</code></span>
+                                    <span>Block Size: <code>256 Bytes</code></span>
+                                </div>
+                                <div class="profile-actions">
+                                    <button class="btn btn-small btn-secondary" id="btnActivateSlot">
+                                        Switch Active Slot (0x03)
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="btnCommitFlash">
+                                        Commit to Flash (0x0C)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LIGHTSYNC RGB (0x8070) -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x8070</span>
+                                <h2>LIGHTSYNC RGB Studio</h2>
+                            </div>
+                            <span class="card-badge" id="rgbBadge">Zone 0 & 1</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="rgb-controls">
+                                <div class="rgb-zone-select">
+                                    <label class="form-label">Zone</label>
+                                    <div class="zone-pills">
+                                        <button class="zone-pill active" data-zone="0">Primary Logo</button>
+                                        <button class="zone-pill" data-zone="1">DPI LED Cluster</button>
+                                    </div>
+                                </div>
+
+                                <div class="rgb-mode-select">
+                                    <label class="form-label">Effect Mode</label>
+                                    <div class="mode-pills">
+                                        <button class="mode-pill active" data-mode="1">Static</button>
+                                        <button class="mode-pill" data-mode="2">Breathing</button>
+                                        <button class="mode-pill" data-mode="3">Color Cycle</button>
+                                    </div>
+                                </div>
+
+                                <div class="rgb-color-picker-row">
+                                    <label class="form-label">Color</label>
+                                    <div class="picker-flex">
+                                        <input type="color" id="rgbColorInput" value="#00e5ff" class="color-swatch-picker" />
+                                        <span class="color-hex-tag" id="colorHexText">#00E5FF</span>
+                                        <div class="palette-swatches">
+                                            <span class="swatch" style="background:#00e5ff" data-color="#00e5ff" title="Logitech Cyan"></span>
+                                            <span class="swatch" style="background:#7c4dff" data-color="#7c4dff" title="Neon Purple"></span>
+                                            <span class="swatch" style="background:#00e676" data-color="#00e676" title="Viper Green"></span>
+                                            <span class="swatch" style="background:#ff0055" data-color="#ff0055" title="Laser Crimson"></span>
+                                            <span class="swatch" style="background:#ffb300" data-color="#ffb300" title="Cyber Amber"></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-accent btn-full" id="btnApplyRgb">
+                                    Send Long Report (0x11) RGB Packet
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Right Column: Protocol Discovery & Wire Telemetry Stream -->
+            <section class="telemetry-column">
+                
+                <!-- Dynamic Feature Resolution Table (0x0000 Root) -->
+                <div class="card glass-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <span class="feature-tag">0x0000</span>
+                            <h2>Root Feature Map Discovery</h2>
+                        </div>
+                        <button class="btn btn-xs btn-outline" id="btnRefreshDiscovery">Query Root (0x00)</button>
+                    </div>
+                    <div class="card-body no-pad">
+                        <div class="table-scroll-container">
+                            <table class="protocol-table" id="featuresTable">
+                                <thead>
+                                    <tr>
+                                        <th>Feature ID</th>
+                                        <th>Name</th>
+                                        <th>Runtime Idx</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="featuresTableBody">
+                                    <tr>
+                                        <td><code>0x0000</code></td>
+                                        <td>IRoot (Discovery)</td>
+                                        <td><code>0x00</code></td>
+                                        <td>Core</td>
+                                        <td><span class="badge badge-success">Permanent</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x0001</code></td>
+                                        <td>IFeatureSet</td>
+                                        <td><code>0x01</code></td>
+                                        <td>Standard</td>
+                                        <td><span class="badge badge-success">Discovered</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x0003</code></td>
+                                        <td>IDeviceInfo</td>
+                                        <td><code>0x02</code></td>
+                                        <td>Standard</td>
+                                        <td><span class="badge badge-success">Discovered</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x2201</code></td>
+                                        <td>AdjustableDPI</td>
+                                        <td><code>0x07</code></td>
+                                        <td>Sensor</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x8061</code></td>
+                                        <td>ReportRate</td>
+                                        <td><code>0x09</code></td>
+                                        <td>USB Bus</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x8070</code></td>
+                                        <td>ColorLED_RGB</td>
+                                        <td><code>0x0D</code></td>
+                                        <td>Lighting</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>0x8100</code></td>
+                                        <td>OnboardProfiles</td>
+                                        <td><code>0x0B</code></td>
+                                        <td>EEPROM</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-Time Packet Wire Inspector -->
+                <div class="card glass-card packet-inspector-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <div class="pulsing-record-dot"></div>
+                            <h2>WebHID Bus Wire Sniffer (TX / RX)</h2>
+                        </div>
+                        <div class="inspector-actions">
+                            <span class="packet-counter" id="packetCountBadge">0 Packets</span>
+                            <button class="btn btn-xs btn-outline" id="btnPausePackets">Pause</button>
+                            <button class="btn btn-xs btn-outline" id="btnClearPackets">Clear</button>
+                            <button class="btn btn-xs btn-outline" id="btnExportLog">Export JSON</button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body no-pad console-body">
+                        <div class="packet-stream-feed" id="packetStreamFeed">
+                            <!-- Packets will append here dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+        </main>
+
+        <!-- Footer / Notification Toast -->
+        <footer class="app-footer">
+            <div class="footer-left">
+                <span>Protocol: HID++ 2.0 / 4.2 Short (0x10, 7B) & Long (0x11, 20B) Reports</span>
+                <span class="separator">•</span>
+                <span>Reverse-Engineered from OnboardMemoryManager_2.7.4428.exe</span>
+            </div>
+            <div class="footer-right">
+                <span id="transportMode">Transport: WebHID / Native Raw Chromium</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Notification Toast Element -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
