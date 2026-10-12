@@ -1,18 +1,6 @@
 /**
  * Universal Logitech HID++ 2.0 / 4.x WebHID Driver Engine
  * Reverse-engineered from Logitech Onboard Memory Manager (OMM 2.7.4428)
- * 
- * Implements:
- * - Dynamic Feature Resolution (0x0000 IRoot)
- * - Multi-Endpoint Windows WebHID routing (Short 0x10 / Long 0x11 / Read Collections)
- * - Lightspeed Wireless Receiver Multiplexing (Unit IDs 0xFF and 0x01..0x06)
- * - Multi-Stage DPI Sensor Management (0x2201, 0x2202)
- * - Polling Frequency / Report Rate (0x8061)
- * - Battery & Wireless Power Telemetry (0x1004, 0x1000)
- * - LIGHTSYNC RGB Effects & Non-Volatile Persistence (0x8070, 0x8071)
- * - Physical Button Remapping & Wire Spy (0x8110, 0x8100)
- * - Onboard Profiles & EEPROM Flash Commit (0x8100)
- * - Sensor Tuning (Angle Snapping, Performance Mode, Sleep Timeouts)
  */
 
 export const HIDPP_FEATURES = {
@@ -59,7 +47,6 @@ export const FEATURE_NAMES = {
     0x8110: 'ButtonSpyRemap'
 };
 
-// OMM Remapping Action Types & Constants
 export const BUTTON_BEHAVIOR = {
     EXECUTE_MACRO: 0x00,
     STOP_MACRO: 0x10,
@@ -97,31 +84,6 @@ export const FUNCTION_OPCODES = {
     SCROLL_UP: 0x11
 };
 
-export const MOUSE_BUTTON_BITS = {
-    PRIMARY: 0x01,    // Left Click
-    SECONDARY: 0x02,  // Right Click
-    MIDDLE: 0x04,     // Middle Click
-    BACK: 0x08,       // Button 4
-    FORWARDS: 0x10    // Button 5
-};
-
-export const CONSUMER_KEYS = {
-    PLAY_PAUSE: 205,
-    PREVIOUS_TRACK: 181,
-    NEXT_TRACK: 182,
-    MUTE: 226,
-    VOLUME_UP: 233,
-    VOLUME_DOWN: 234
-};
-
-export const MODIFIERS = {
-    CTRL: 0x01,
-    SHIFT: 0x02,
-    ALT: 0x04,
-    GUI: 0x08 // Windows / Cmd Key
-};
-
-// Standard Physical Button Definitions (OMM mouse model)
 export const PHYSICAL_BUTTONS = [
     { id: 1, name: 'Button 1 (Left Click)', defaultAction: { behavior: 0x80, type: 'mouse', value: 1, label: 'Primary Click' } },
     { id: 2, name: 'Button 2 (Right Click)', defaultAction: { behavior: 0x80, type: 'mouse', value: 2, label: 'Secondary Click' } },
@@ -136,23 +98,34 @@ export const PHYSICAL_BUTTONS = [
     { id: 11, name: 'Button 11 (Wheel Tilt Right)', defaultAction: { behavior: 0x90, type: 'func', value: 2, label: 'Tilt Right' } }
 ];
 
+export const CONSUMER_KEYS = {
+    PLAY_PAUSE: 0x00CD,
+    NEXT_TRACK: 0x00B5,
+    PREV_TRACK: 0x00B6,
+    STOP: 0x00B7,
+    MUTE: 0x00E2,
+    VOLUME_UP: 0x00E9,
+    VOLUME_DOWN: 0x00EA
+};
+
 export class HidppDevice {
     constructor() {
         this.writeDevice = null;
         this.readDevice = null;
         this.isConnected = false;
-        this.deviceIndex = 0xFF; // Default 0xFF (Direct Corded USB) or 0x01..0x06 (Wireless Lightspeed Dongle)
+        this.deviceIndex = 0xFF; // 0xFF for wired USB, 0x01..0x06 for Lightspeed dongle
         this.deviceInfo = {
             name: 'Disconnected',
             vid: 0,
             pid: 0,
             serial: '',
             protocolVersion: 'HID++ 2.0 / 4.2',
-            transport: 'USB Corded'
+            transport: 'USB Direct',
+            isWired: true
         };
         this.featureIndexMap = new Map(); // Feature ID -> Runtime Index
         this.indexFeatureMap = new Map(); // Runtime Index -> Feature ID
-        this.pendingRequests = new Map(); // Key `${featIdx}_${fnId}_${swId}` -> { resolve, reject, timer }
+        this.pendingRequests = new Map();
         this.swCounter = 0x01;
         this.packetListeners = [];
         this.buttonEventListeners = [];
@@ -194,15 +167,11 @@ export class HidppDevice {
         }
     }
 
-    /**
-     * Request device via WebHID and setup both collections
-     */
     async requestAndOpen() {
         if (!navigator.hid) {
             throw new Error('WebHID API is not supported in this browser. Please use Chrome, Edge, Brave, or Opera over localhost or HTTPS.');
         }
 
-        // Request Logitech peripherals with vendorId 0x046D
         const requested = await navigator.hid.requestDevice({
             filters: [{ vendorId: 0x046D }]
         });
@@ -211,7 +180,6 @@ export class HidppDevice {
             throw new Error('No Logitech device selected.');
         }
 
-        // Query all granted devices from navigator.hid.getDevices() to bind both collections!
         const allGranted = await navigator.hid.getDevices();
         const logiDevices = allGranted.filter(d => d.vendorId === 0x046D);
         const deviceList = logiDevices.length > 0 ? logiDevices : requested;
@@ -239,12 +207,13 @@ export class HidppDevice {
             }
         }
 
-        // Fallback for single collection devices
         if (!writeCandidate && deviceList.length > 0) writeCandidate = deviceList[0];
         if (!readCandidate && deviceList.length > 0) readCandidate = deviceList[0];
 
         this.writeDevice = writeCandidate;
         this.readDevice = readCandidate;
+
+        const isReceiver = writeCandidate.productName?.toLowerCase().includes('receiver');
 
         this.deviceInfo = {
             name: writeCandidate.productName || 'Logitech Gaming Peripheral',
@@ -252,27 +221,20 @@ export class HidppDevice {
             pid: writeCandidate.productId,
             serial: writeCandidate.serialNumber || 'N/A',
             protocolVersion: 'HID++ 2.0 / 4.2',
-            transport: writeCandidate.productName?.toLowerCase().includes('receiver') ? 'Lightspeed Wireless 2.4GHz' : 'USB Direct'
+            transport: isReceiver ? 'Lightspeed Wireless 2.4GHz' : 'USB Direct',
+            isWired: !isReceiver
         };
 
-        // Determine device unit index: Corded USB (0xFF) vs Lightspeed Wireless Dongle (0x01)
-        if (this.deviceInfo.transport.includes('Wireless')) {
-            this.deviceIndex = 0x01; // First paired slot on Lightspeed receiver
-        } else {
-            this.deviceIndex = 0xFF; // Direct USB
-        }
+        this.deviceIndex = isReceiver ? 0x01 : 0xFF;
 
-        // Attach input report handler on readDevice
         this.readDevice.addEventListener('inputreport', (event) => {
             this.handleInputReport(event);
         });
 
         this.isConnected = true;
 
-        // Perform initial feature enumeration
         await this.discoverFeatures();
 
-        // Query Device Name if supported
         try {
             const queriedName = await this.queryDeviceName();
             if (queriedName) this.deviceInfo.name = queriedName;
@@ -297,7 +259,6 @@ export class HidppDevice {
         const fnId = (fnSw >> 4) & 0x0F;
         const swId = fnSw & 0x0F;
 
-        // Check for asynchronous notifications (swId === 0 or button event)
         const featureId = this.indexFeatureMap.get(featIdx);
 
         // Feature 0x8110 (Button Spy Broadcasts)
@@ -347,7 +308,7 @@ export class HidppDevice {
         const totalPayloadLen = isLong ? 19 : 6;
 
         const data = new Uint8Array(totalPayloadLen);
-        data[0] = this.deviceIndex; // 0xFF or receiver unit index 0x01
+        data[0] = this.deviceIndex;
         data[1] = featIdx;
         data[2] = ((fnId & 0x0F) << 4) | (swId & 0x0F);
 
@@ -364,14 +325,13 @@ export class HidppDevice {
         return new Promise(async (resolve, reject) => {
             const timer = setTimeout(() => {
                 this.pendingRequests.delete(reqKey);
-                reject(new Error(`Timeout waiting for Feat=0x${featIdx.toString(16).padStart(2,'0')} Fn=0x${fnId.toString(16)} (sw=${swId})`));
+                reject(new Error(`Timeout waiting for Feat=0x${featIdx.toString(16).padStart(2,'0')} Fn=0x${fnId.toString(16)}`));
             }, timeoutMs);
 
             this.pendingRequests.set(reqKey, { resolve, reject, timer });
 
             try {
                 this.emitPacket('TX', reportId, this.deviceIndex, featIdx, fnId, swId, fullSendBytes, 'Host Command');
-                // sendReport routes short reports (0x10) to write collection and long reports (0x11) to read collection
                 const targetDev = (isLong && this.readDevice) ? this.readDevice : (this.writeDevice || this.readDevice);
                 await targetDev.sendReport(reportId, data);
             } catch (err) {
@@ -407,7 +367,6 @@ export class HidppDevice {
             HIDPP_FEATURES.DEVICE_NAME,
             HIDPP_FEATURES.UNIFIED_BATTERY,
             HIDPP_FEATURES.BATTERY_STATUS,
-            HIDPP_FEATURES.BATTERY_PERCENT,
             HIDPP_FEATURES.ADJUSTABLE_DPI,
             HIDPP_FEATURES.DPI_SENSOR,
             HIDPP_FEATURES.ANGLE_SNAPPING,
@@ -415,34 +374,26 @@ export class HidppDevice {
             HIDPP_FEATURES.COLOR_LED,
             HIDPP_FEATURES.RGB_CLUSTER,
             HIDPP_FEATURES.ONBOARD_PROFILES,
-            HIDPP_FEATURES.BUTTON_SPY,
-            HIDPP_FEATURES.SPECIAL_KEYS
+            HIDPP_FEATURES.BUTTON_SPY
         ];
 
         for (const featId of featuresToProbe) {
             try {
                 await this.queryFeature(featId);
-            } catch (e) {
-                // Not supported on this specific hardware model, silently continue
-            }
+            } catch (e) {}
         }
     }
 
-    /* -------------------------------------------------------------
-     * Device Information & Naming (0x0003, 0x0005)
-     * ------------------------------------------------------------- */
     async queryDeviceName() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.DEVICE_NAME);
         if (!featIdx) return null;
 
-        // Function 0x0: getNameCount
         const countRes = await this.sendCommand(featIdx, 0x00, [0x00, 0x00, 0x00]);
         const nameLength = countRes[4] || 0;
         if (nameLength === 0) return null;
 
         let nameStr = '';
         for (let i = 0; i < nameLength; i += 16) {
-            // Function 0x1: getDeviceNameChunk
             const chunkRes = await this.sendCommand(featIdx, 0x01, [i, 0x00, 0x00], true);
             if (chunkRes && chunkRes.length >= 5) {
                 const chars = Array.from(chunkRes.slice(4)).filter(c => c > 0 && c < 128);
@@ -453,28 +404,24 @@ export class HidppDevice {
     }
 
     /* -------------------------------------------------------------
-     * Battery & Power Telemetry (0x1004, 0x1000)
+     * Battery Telemetry (0x1004, 0x1000)
      * ------------------------------------------------------------- */
     async getBatteryStatus() {
-        // Try 0x1004 Unified Battery first
         const feat1004 = this.featureIndexMap.get(HIDPP_FEATURES.UNIFIED_BATTERY);
         if (feat1004) {
-            // Function 0x1: getStatus
             const res = await this.sendCommand(feat1004, 0x01, [0x00, 0x00, 0x00]);
             if (res.length >= 7) {
                 const percent = res[4];
-                const level = res[5]; // 1=critical, 2=low, 4=good, 8=full
-                const chargingStatus = res[6]; // 0=discharging, 1=charging, 2=slow, 3=complete, 5=wireless
+                const level = res[5];
+                const chargingStatus = res[6];
                 const isCharging = chargingStatus === 1 || chargingStatus === 2 || chargingStatus === 5;
                 const isWirelessPowerPlay = chargingStatus === 5;
                 return { percent, level, chargingStatus, isCharging, isWirelessPowerPlay, isSupported: true };
             }
         }
 
-        // Try 0x1000 Battery Level Status
         const feat1000 = this.featureIndexMap.get(HIDPP_FEATURES.BATTERY_STATUS);
         if (feat1000) {
-            // Function 0x1: getBatteryLevelStatus
             const res = await this.sendCommand(feat1000, 0x01, [0x00, 0x00, 0x00]);
             if (res.length >= 7) {
                 const percent = res[4];
@@ -491,18 +438,17 @@ export class HidppDevice {
         const percent = u8[3] !== undefined ? u8[3] : 100;
         const charging = u8[5] === 1 || u8[5] === 5;
         for (const cb of this.batteryListeners) {
-            try { cb({ percent, isCharging: charging }); } catch (e) {}
+            try { cb({ percent, isCharging: charging, isSupported: true }); } catch (e) {}
         }
     }
 
     /* -------------------------------------------------------------
-     * Multi-Stage DPI Sensor Management (0x2201, 0x2202)
+     * DPI & Report Rate
      * ------------------------------------------------------------- */
     async getDpi() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ADJUSTABLE_DPI);
-        if (!featIdx) throw new Error('Adjustable DPI feature (0x2201) not supported on this device.');
+        if (!featIdx) throw new Error('Adjustable DPI feature (0x2201) not available.');
 
-        // Function 0x2: getSensorDPI
         const res = await this.sendCommand(featIdx, 0x02, [0x00, 0x00, 0x00]);
         if (res.length >= 7) {
             const sensor = res[4];
@@ -515,69 +461,123 @@ export class HidppDevice {
 
     async setDpi(dpi, sensor = 0) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ADJUSTABLE_DPI);
-        if (!featIdx) throw new Error('Adjustable DPI feature not supported on this device.');
+        if (!featIdx) throw new Error('Adjustable DPI feature not available.');
 
         const dpiHi = (dpi >> 8) & 0xFF;
         const dpiLo = dpi & 0xFF;
 
-        // Function 0x3: setSensorDPI
         const res = await this.sendCommand(featIdx, 0x03, [sensor, dpiHi, dpiLo]);
         if (res.length >= 7) {
-            const confirmedDpi = (res[5] << 8) | res[6];
-            return confirmedDpi;
+            return (res[5] << 8) | res[6];
         }
         return dpi;
     }
 
-    /* -------------------------------------------------------------
-     * Report Rate / Polling Frequency (0x8061)
-     * ------------------------------------------------------------- */
     async setReportRate(rateHz) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE);
-        if (!featIdx) throw new Error('Report Rate feature (0x8061) not supported.');
-
-        // Bitmasks: 1000Hz = 0x01, 500Hz = 0x02, 250Hz = 0x04, 125Hz = 0x08
-        const rateMap = { 1000: 0x01, 500: 0x02, 250: 0x04, 125: 0x08 };
-        const mask = rateMap[rateHz] || 0x01;
-        await this.sendCommand(featIdx, 0x01, [mask, 0x00, 0x00]);
-        return true;
+        if (featIdx) {
+            const rateMap = { 1000: 0x01, 500: 0x02, 250: 0x04, 125: 0x08 };
+            const mask = rateMap[rateHz] || 0x01;
+            await this.sendCommand(featIdx, 0x01, [mask, 0x00, 0x00]);
+            return true;
+        }
+        return false;
     }
 
     /* -------------------------------------------------------------
-     * LIGHTSYNC RGB Lighting (0x8070, 0x8071)
+     * LIGHTSYNC RGB Studio (0x8070)
+     * Handles Static (1), Breathing (2), Color Cycle (3), Off (0)
      * ------------------------------------------------------------- */
-    async setLightingEffect(zone, effectMode, r, g, b) {
+    async setLightingEffect(zone, effectMode, r, g, b, periodMs = 3000, intensity = 100) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
-        if (!featIdx) throw new Error('Color LED feature (0x8070) not supported on this device.');
+        if (!featIdx) throw new Error('Color LED feature (0x8070) not available.');
 
-        // Enable Software Control (Function 0x08)
+        // Step 1: Ensure Software Lighting Control (Function 0x08) is enabled
         try {
             await this.sendCommand(featIdx, 0x08, [0x01, 0x00, 0x00]);
         } catch (e) {}
 
-        // Long Report (0x11): Function 0x03 setZoneEffect
-        // payload: [zone, effectMode, R, G, B, color_anim(0x02), 6x zeros, persistence(0x01=NV Flash), 3x zeros]
-        const payload = [
-            zone & 0xFF,
-            effectMode & 0xFF,
-            r & 0xFF,
-            g & 0xFF,
-            b & 0xFF,
-            0x02, // Immediate solid color application
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x01, // 0x01 = Persist to EEPROM/Flash across power cycles
-            0x00, 0x00, 0x00
-        ];
+        const periodHi = (periodMs >> 8) & 0xFF;
+        const periodLo = periodMs & 0xFF;
+        const brightness = Math.min(100, Math.max(0, intensity));
+
+        let payload;
+
+        if (effectMode === 3) {
+            // COLOR CYCLING:
+            // Layout: [zone, 0x03, 0, 0, 0, 0, 0, periodHi, periodLo, brightness, 0, 0, persistence(1), 0, 0, 0]
+            payload = [
+                zone & 0xFF,
+                0x03,
+                0x00, 0x00, 0x00, 0x00, 0x00,
+                periodHi, periodLo,
+                brightness,
+                0x00, 0x00,
+                0x01, // Persistence = 1 (Non-volatile Flash)
+                0x00, 0x00, 0x00
+            ];
+        } else if (effectMode === 2) {
+            // BREATHING (PULSING):
+            // Layout: [zone, 0x02, R, G, B, periodHi, periodLo, 0, brightness, 0, 0, 0, persistence(1), 0, 0, 0]
+            payload = [
+                zone & 0xFF,
+                0x02,
+                r & 0xFF, g & 0xFF, b & 0xFF,
+                periodHi, periodLo,
+                0x00,
+                brightness,
+                0x00, 0x00, 0x00,
+                0x01, // Persistence = 1
+                0x00, 0x00, 0x00
+            ];
+        } else if (effectMode === 0) {
+            // OFF:
+            payload = [
+                zone & 0xFF,
+                0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x01,
+                0x00, 0x00, 0x00
+            ];
+        } else {
+            // STATIC / FIXED COLOR (1):
+            // Layout: [zone, 0x01, R, G, B, 0x02 (NO_EFFECT), 0, 0, 0, 0, 0, 0, persistence(1), 0, 0, 0]
+            payload = [
+                zone & 0xFF,
+                0x01,
+                r & 0xFF, g & 0xFF, b & 0xFF,
+                0x02,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x01,
+                0x00, 0x00, 0x00
+            ];
+        }
+
         return await this.sendCommand(featIdx, 0x03, payload, true);
     }
 
+    /**
+     * Flash mouse LEDs to visually identify the hardware
+     */
+    async flashIdentify() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
+        if (!featIdx) return;
+
+        // Flash rapid bright white / cyan pulses
+        for (let i = 0; i < 3; i++) {
+            await this.setLightingEffect(0, 1, 255, 255, 255);
+            await new Promise(r => setTimeout(r, 120));
+            await this.setLightingEffect(0, 1, 0, 229, 255);
+            await new Promise(r => setTimeout(r, 120));
+        }
+    }
+
     /* -------------------------------------------------------------
-     * Physical Button Remapping & Wire Spy (0x8110)
+     * Button Remapping & Spy (0x8110)
      * ------------------------------------------------------------- */
     async startButtonSpy() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
         if (!featIdx) return false;
-        // Function 0x1: startSpy
         try {
             await this.sendCommand(featIdx, 0x01, [0x00, 0x00, 0x00]);
             return true;
@@ -597,7 +597,6 @@ export class HidppDevice {
     async getButtonRemappings() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
         if (!featIdx) return null;
-        // Function 0x3: getRemapping (returns 16 entries)
         try {
             const res = await this.sendCommand(featIdx, 0x03, [0x00, 0x00, 0x00], true);
             if (res && res.length >= 20) {
@@ -615,33 +614,15 @@ export class HidppDevice {
             throw new Error('Remapping array must contain exactly 16 button mappings.');
         }
 
-        // Function 0x4: setRemapping (Long report 0x11 with 16 byte indices)
         return await this.sendCommand(featIdx, 0x04, mappingArray16, true);
     }
 
     /* -------------------------------------------------------------
-     * Onboard Profiles & EEPROM Flash Commit (0x8100)
+     * Onboard Profiles (0x8100)
      * ------------------------------------------------------------- */
-    async getOnboardProfilesInfo() {
-        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
-        if (!featIdx) throw new Error('Onboard profiles feature (0x8100) not available on this device.');
-
-        // Function 0x0: getOnboardProfilesInfo
-        const res = await this.sendCommand(featIdx, 0x00, [0x00, 0x00, 0x00]);
-        if (res.length >= 10) {
-            return {
-                formatVersion: res[4],
-                profileCount: res[7] || 5,
-                sectorSize: 256
-            };
-        }
-        return { formatVersion: 1, profileCount: 5, sectorSize: 256 };
-    }
-
     async getOnboardMode() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
-        if (!featIdx) return 1; // Default to Onboard mode
-        // Function 0x2: getOnboardMode (1 = Onboard, 2 = Host/Software)
+        if (!featIdx) return 1;
         try {
             const res = await this.sendCommand(featIdx, 0x02, [0x00, 0x00, 0x00]);
             return res[4] || 1;
@@ -653,15 +634,12 @@ export class HidppDevice {
     async setOnboardMode(mode) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) return;
-        // Function 0x1: setOnboardMode (1 = Onboard Memory, 2 = Host)
         await this.sendCommand(featIdx, 0x01, [mode & 0xFF, 0x00, 0x00]);
     }
 
     async getActiveProfile() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) return 1;
-
-        // Function 0x4: getActiveProfile
         const res = await this.sendCommand(featIdx, 0x04, [0x00, 0x00, 0x00]);
         if (res.length >= 6) {
             return (res[4] << 8) | res[5];
@@ -672,8 +650,6 @@ export class HidppDevice {
     async setActiveProfile(sectorId) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature not available.');
-
-        // Function 0x3: setActiveProfile
         const secHi = (sectorId >> 8) & 0xFF;
         const secLo = sectorId & 0xFF;
         const res = await this.sendCommand(featIdx, 0x03, [secHi, secLo, 0x00]);
@@ -683,25 +659,10 @@ export class HidppDevice {
     async commitProfileToFlash(sectorId) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature not available.');
-
-        // Function 0xC: writeProfileData sector commit
         const secHi = (sectorId >> 8) & 0xFF;
         const secLo = sectorId & 0xFF;
         const res = await this.sendCommand(featIdx, 0x0C, [secHi, secLo, 0x00]);
         return res[4] === 0x00;
-    }
-
-    /* -------------------------------------------------------------
-     * Sensor Tuning & Angle Snapping (0x2240)
-     * ------------------------------------------------------------- */
-    async setAngleSnapping(enabled) {
-        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ANGLE_SNAPPING);
-        if (featIdx) {
-            // Function 0x1: setAngleSnapping (0x01 = On, 0x00 = Off)
-            await this.sendCommand(featIdx, 0x01, [enabled ? 0x01 : 0x00, 0x00, 0x00]);
-            return true;
-        }
-        return false;
     }
 
     async disconnect() {

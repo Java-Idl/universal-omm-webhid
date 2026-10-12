@@ -51,6 +51,11 @@ class AppController {
         this.currentZone = 0;
         this.currentMode = 1;
         this.currentColor = '#00e5ff';
+        this.currentPeriod = 3000;
+        this.currentIntensity = 100;
+
+        // Button Remapping Identify Mode
+        this.isIdentifyMode = false;
 
         // Battery State
         this.batteryInfo = { percent: 80, isCharging: false, level: 4 };
@@ -61,6 +66,7 @@ class AppController {
         this.renderDpiStages();
         this.renderPhysicalButtons();
         this.updateGauge(this.dpiStages[this.activeStageIndex]);
+        this.updateRgbControlVisibility();
     }
 
     /* -------------------------------------------------------------
@@ -107,6 +113,9 @@ class AppController {
         this.physicalButtonList = document.getElementById('physicalButtonList');
         this.buttonSpyBadge = document.getElementById('buttonSpyBadge');
         this.btnToggleSpy = document.getElementById('btnToggleSpy');
+        this.btnIdentifyDevice = document.getElementById('btnIdentifyDevice');
+        this.btnIdentifyButton = document.getElementById('btnIdentifyButton');
+        this.identifyBanner = document.getElementById('identifyBanner');
         this.testerDisplay = document.getElementById('testerDisplay');
         this.selectedButtonTitle = document.getElementById('selectedButtonTitle');
         this.selectedButtonBadge = document.getElementById('selectedButtonBadge');
@@ -135,6 +144,12 @@ class AppController {
         // RGB Tab
         this.zonePills = document.querySelectorAll('.zone-pill');
         this.modePills = document.querySelectorAll('.mode-pill');
+        this.colorPickerRow = document.getElementById('colorPickerRow');
+        this.effectParamBox = document.getElementById('effectParamBox');
+        this.periodSlider = document.getElementById('periodSlider');
+        this.periodValueBadge = document.getElementById('periodValueBadge');
+        this.intensitySlider = document.getElementById('intensitySlider');
+        this.intensityValueBadge = document.getElementById('intensityValueBadge');
         this.rgbColorInput = document.getElementById('rgbColorInput');
         this.colorHexText = document.getElementById('colorHexText');
         this.swatches = document.querySelectorAll('.palette-swatches .swatch');
@@ -143,6 +158,12 @@ class AppController {
         this.btnApplyRgb = document.getElementById('btnApplyRgb');
 
         // Power Tab
+        this.batteryStateBadge = document.getElementById('batteryStateBadge');
+        this.wiredPowerNotice = document.getElementById('wiredPowerNotice');
+        this.wirelessBatteryGauge = document.getElementById('wirelessBatteryGauge');
+        this.metricPowerSource = document.getElementById('metricPowerSource');
+        this.metricPowerState = document.getElementById('metricPowerState');
+        this.metricBatteryHard = document.getElementById('metricBatteryHard');
         this.batteryBigPercent = document.getElementById('batteryBigPercent');
         this.batteryStatusSub = document.getElementById('batteryStatusSub');
         this.metricChargingState = document.getElementById('metricChargingState');
@@ -330,9 +351,62 @@ class AppController {
                 this.buttonSpyBadge.textContent = 'Spy Inactive';
                 this.buttonSpyBadge.classList.remove('badge-success');
                 this.btnToggleSpy.textContent = 'Enable Live Spy';
+                if (this.isIdentifyMode) {
+                    this.isIdentifyMode = false;
+                    if (this.btnIdentifyButton) this.btnIdentifyButton.classList.remove('btn-active');
+                    if (this.identifyBanner) this.identifyBanner.classList.add('hidden');
+                }
                 this.showToast('Hardware button spy disabled', 'info');
             }
         });
+
+        // Flash Mouse Peripheral Identification
+        if (this.btnIdentifyDevice) {
+            this.btnIdentifyDevice.addEventListener('click', async () => {
+                if (!this.device.isConnected) {
+                    this.showToast('Connect peripheral to flash LEDs', 'error');
+                    return;
+                }
+                try {
+                    this.showToast('Flashing peripheral LEDs for hardware identification...', 'info');
+                    await this.device.flashIdentify();
+                } catch (err) {
+                    this.showToast(err.message, 'error');
+                }
+            });
+        }
+
+        // Identify Physical Button via Click
+        if (this.btnIdentifyButton) {
+            this.btnIdentifyButton.addEventListener('click', async () => {
+                if (!this.device.isConnected) {
+                    this.showToast('Connect peripheral to identify physical buttons', 'error');
+                    return;
+                }
+                this.isIdentifyMode = !this.isIdentifyMode;
+                if (this.isIdentifyMode) {
+                    // Automatically activate live spy if not yet running
+                    if (!this.isSpyActive) {
+                        const ok = await this.device.startButtonSpy();
+                        if (ok) {
+                            this.isSpyActive = true;
+                            this.buttonSpyBadge.textContent = 'Spy Active (Listening)';
+                            this.buttonSpyBadge.classList.add('badge-success');
+                            this.btnToggleSpy.textContent = 'Disable Live Spy';
+                        }
+                    }
+                    this.btnIdentifyButton.classList.add('btn-active');
+                    this.btnIdentifyButton.innerHTML = '⏹ Stop Identify';
+                    if (this.identifyBanner) this.identifyBanner.classList.remove('hidden');
+                    this.showToast('🎯 Identify Mode Active: Press any physical button on your mouse!', 'info');
+                } else {
+                    this.btnIdentifyButton.classList.remove('btn-active');
+                    this.btnIdentifyButton.innerHTML = '🎯 Identify Button';
+                    if (this.identifyBanner) this.identifyBanner.classList.add('hidden');
+                    this.showToast('Identify Mode stopped', 'info');
+                }
+            });
+        }
 
         // Profiles Slot Management
         this.slotTabs.forEach(tab => {
@@ -374,8 +448,27 @@ class AppController {
                 this.modePills.forEach(p => p.classList.remove('active'));
                 mp.classList.add('active');
                 this.currentMode = parseInt(mp.dataset.mode, 10);
+                this.updateRgbControlVisibility();
             });
         });
+
+        if (this.periodSlider) {
+            this.periodSlider.addEventListener('input', (e) => {
+                this.currentPeriod = parseInt(e.target.value, 10);
+                if (this.periodValueBadge) {
+                    this.periodValueBadge.textContent = `${this.currentPeriod.toLocaleString()} ms (${(this.currentPeriod / 1000).toFixed(1)}s cycle)`;
+                }
+            });
+        }
+
+        if (this.intensitySlider) {
+            this.intensitySlider.addEventListener('input', (e) => {
+                this.currentIntensity = parseInt(e.target.value, 10);
+                if (this.intensityValueBadge) {
+                    this.intensityValueBadge.textContent = `${this.currentIntensity}%`;
+                }
+            });
+        }
 
         this.rgbColorInput.addEventListener('input', (e) => {
             this.setColor(e.target.value);
@@ -474,7 +567,25 @@ class AppController {
         }
 
         // 2. Query Battery Status (0x1004 / 0x1000)
-        await this.refreshBatteryStatus();
+        const hasBatt = this.device.featureIndexMap.has(HIDPP_FEATURES.BATTERY_STATUS) || 
+                        this.device.featureIndexMap.has(HIDPP_FEATURES.UNIFIED_BATTERY);
+        if (!hasBatt) {
+            // Corded USB bus-powered device (e.g. G502 HERO Wired)
+            this.batteryPill.classList.add('hidden');
+            if (this.wiredPowerNotice) this.wiredPowerNotice.classList.remove('hidden');
+            if (this.wirelessBatteryGauge) this.wirelessBatteryGauge.classList.add('hidden');
+            if (this.batteryStateBadge) {
+                this.batteryStateBadge.textContent = 'USB Bus Powered (5V)';
+                this.batteryStateBadge.className = 'card-badge badge-success';
+            }
+            if (this.metricPowerSource) this.metricPowerSource.textContent = 'USB 5V Continuous Bus';
+            if (this.metricPowerState) this.metricPowerState.textContent = 'Continuous 1000 Hz';
+            if (this.metricBatteryHard) this.metricBatteryHard.textContent = 'Corded USB (No Battery)';
+        } else {
+            if (this.wiredPowerNotice) this.wiredPowerNotice.classList.add('hidden');
+            if (this.wirelessBatteryGauge) this.wirelessBatteryGauge.classList.remove('hidden');
+            await this.refreshBatteryStatus();
+        }
 
         // 3. Query Active Profile Slot (0x8100)
         const profilesIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
@@ -527,10 +638,16 @@ class AppController {
     }
 
     updateBatteryUI(b) {
-        if (!b.isSupported) {
+        if (!b || !b.isSupported) {
             this.batteryPill.classList.add('hidden');
+            if (this.wiredPowerNotice) this.wiredPowerNotice.classList.remove('hidden');
+            if (this.wirelessBatteryGauge) this.wirelessBatteryGauge.classList.add('hidden');
+            if (this.batteryStateBadge) this.batteryStateBadge.textContent = 'USB Bus Powered (5V)';
             return;
         }
+
+        if (this.wiredPowerNotice) this.wiredPowerNotice.classList.add('hidden');
+        if (this.wirelessBatteryGauge) this.wirelessBatteryGauge.classList.remove('hidden');
 
         this.batteryInfo = b;
         this.batteryPill.classList.remove('hidden');
@@ -544,11 +661,17 @@ class AppController {
         }
 
         // Power Tab details
-        this.batteryBigPercent.textContent = `${b.percent}%`;
-        this.batteryStatusSub.textContent = b.isCharging ? 'Charging' : 'Discharging';
-        this.metricChargingState.textContent = b.isCharging ? (b.isWirelessPowerPlay ? 'Wireless (PowerPlay)' : 'Charging via USB') : 'Discharging';
-        this.metricBatteryLevel.textContent = b.level === 8 ? 'Full' : (b.level === 4 ? 'Good' : (b.level === 2 ? 'Low' : 'Critical'));
-        this.metricPowerPlay.textContent = b.isWirelessPowerPlay ? 'Active (Pad Powered)' : 'Inactive';
+        if (this.batteryBigPercent) this.batteryBigPercent.textContent = `${b.percent}%`;
+        if (this.batteryStatusSub) this.batteryStatusSub.textContent = b.isCharging ? 'Charging' : 'Discharging';
+        if (this.batteryStateBadge) {
+            this.batteryStateBadge.textContent = b.isCharging ? 'Charging' : `${b.percent}% Battery`;
+            this.batteryStateBadge.className = 'card-badge badge-cyan';
+        }
+        if (this.metricChargingState) this.metricChargingState.textContent = b.isCharging ? (b.isWirelessPowerPlay ? 'Wireless (PowerPlay)' : 'Charging via USB') : 'Discharging';
+        if (this.metricBatteryLevel) this.metricBatteryLevel.textContent = b.level === 8 ? 'Full' : (b.level === 4 ? 'Good' : (b.level === 2 ? 'Low' : 'Critical'));
+        if (this.metricPowerPlay) this.metricPowerPlay.textContent = b.isWirelessPowerPlay ? 'Active (Pad Powered)' : 'Inactive';
+        if (this.metricPowerSource) this.metricPowerSource.textContent = b.isWirelessPowerPlay ? 'PowerPlay Pad' : (b.isCharging ? 'USB Cable' : 'Internal LiPo');
+        if (this.metricBatteryHard) this.metricBatteryHard.textContent = 'Wireless Lightspeed Rechargeable';
     }
 
     /* -------------------------------------------------------------
@@ -688,12 +811,38 @@ class AppController {
         const rawStatus = evt.rawStatus;
         this.testerDisplay.textContent = `Raw Status: 0x${rawStatus.toString(16).padStart(4, '0').toUpperCase()} (${evt.data.map(b => b.toString(16).padStart(2,'0')).join(' ')})`;
 
+        let pressedBtnId = null;
+
         for (let i = 0; i < 16; i++) {
             const isDown = ((rawStatus >> i) & 1) === 1;
             const btnEl = document.getElementById(`btn-remap-${i + 1}`);
             if (btnEl) {
-                if (isDown) btnEl.classList.add('testing');
-                else btnEl.classList.remove('testing');
+                if (isDown) {
+                    btnEl.classList.add('testing');
+                    if (pressedBtnId === null) pressedBtnId = i + 1;
+                } else {
+                    btnEl.classList.remove('testing');
+                }
+            }
+        }
+
+        // Automatic Button Identification Mode
+        if (this.isIdentifyMode && pressedBtnId !== null) {
+            const targetBtn = this.physicalButtons.find(b => b.id === pressedBtnId);
+            if (targetBtn) {
+                this.selectedButtonId = pressedBtnId;
+                this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
+                this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
+                this.renderPhysicalButtons();
+
+                const targetEl = document.getElementById(`btn-remap-${pressedBtnId}`);
+                if (targetEl) {
+                    targetEl.classList.add('identified-flash');
+                    setTimeout(() => targetEl.classList.remove('identified-flash'), 1200);
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+
+                this.showToast(`🎯 Identified Button: ${targetBtn.name} (Hardware ID ${pressedBtnId})`, 'success');
             }
         }
     }
@@ -816,13 +965,53 @@ class AppController {
     /* -------------------------------------------------------------
      * LIGHTSYNC RGB Studio
      * ------------------------------------------------------------- */
+    updateRgbControlVisibility() {
+        if (!this.colorPickerRow || !this.effectParamBox) return;
+
+        // Mode 0: Off, 1: Static, 2: Breathing, 3: Color Cycle
+        if (this.currentMode === 0) {
+            this.colorPickerRow.style.display = 'none';
+            this.effectParamBox.style.display = 'none';
+            this.rgbStatusLabel.textContent = 'Active: LEDs Disabled (Off)';
+            this.rgbGlowDemo.style.background = '#1a1d24';
+            this.rgbGlowDemo.style.boxShadow = 'none';
+        } else if (this.currentMode === 1) {
+            // Static
+            this.colorPickerRow.style.display = 'block';
+            this.effectParamBox.style.display = 'block';
+            if (this.periodSlider) this.periodSlider.closest('.slider-param-row').style.display = 'none';
+            if (this.intensitySlider) this.intensitySlider.closest('.slider-param-row').style.display = 'block';
+            this.setColor(this.currentColor);
+        } else if (this.currentMode === 2) {
+            // Breathing
+            this.colorPickerRow.style.display = 'block';
+            this.effectParamBox.style.display = 'block';
+            if (this.periodSlider) this.periodSlider.closest('.slider-param-row').style.display = 'block';
+            if (this.intensitySlider) this.intensitySlider.closest('.slider-param-row').style.display = 'block';
+            this.setColor(this.currentColor);
+        } else if (this.currentMode === 3) {
+            // Color Cycle (Autonomous Spectrum Sweep)
+            this.colorPickerRow.style.display = 'none';
+            this.effectParamBox.style.display = 'block';
+            if (this.periodSlider) this.periodSlider.closest('.slider-param-row').style.display = 'block';
+            if (this.intensitySlider) this.intensitySlider.closest('.slider-param-row').style.display = 'block';
+            this.rgbStatusLabel.textContent = `Active: Full Spectrum Rainbow Cycle (${(this.currentPeriod/1000).toFixed(1)}s Period)`;
+            this.rgbGlowDemo.style.background = 'linear-gradient(135deg, #ff0055, #ffb300, #00e676, #00e5ff, #7c4dff)';
+            this.rgbGlowDemo.style.boxShadow = '0 0 25px rgba(0, 229, 255, 0.4)';
+        }
+    }
+
     setColor(hex) {
         this.currentColor = hex;
-        this.rgbColorInput.value = hex;
-        this.colorHexText.textContent = hex.toUpperCase();
-        this.rgbGlowDemo.style.background = hex;
-        this.rgbGlowDemo.style.boxShadow = `0 0 20px ${hex}`;
-        this.rgbStatusLabel.textContent = `Active: ${hex.toUpperCase()}`;
+        if (this.rgbColorInput) this.rgbColorInput.value = hex;
+        if (this.colorHexText) this.colorHexText.textContent = hex.toUpperCase();
+        if (this.rgbGlowDemo && this.currentMode !== 3 && this.currentMode !== 0) {
+            this.rgbGlowDemo.style.background = hex;
+            this.rgbGlowDemo.style.boxShadow = `0 0 20px ${hex}`;
+        }
+        if (this.rgbStatusLabel && this.currentMode !== 3 && this.currentMode !== 0) {
+            this.rgbStatusLabel.textContent = `Active: ${hex.toUpperCase()}`;
+        }
     }
 
     async applyLighting() {
@@ -831,17 +1020,37 @@ class AppController {
         const g = parseInt(hex.substring(2, 4), 16) || 0;
         const b = parseInt(hex.substring(4, 6), 16) || 0;
 
+        const modeNames = { 0: 'Off', 1: 'Static Color', 2: 'Breathing', 3: 'Color Cycle' };
+        const modeLabel = modeNames[this.currentMode] || `Mode ${this.currentMode}`;
+
         if (!this.device.isConnected) {
-            this.showToast(`RGB Color Applied: RGB(${r},${g},${b}) (Offline)`, 'info');
+            this.showToast(`RGB Effect: ${modeLabel} (Offline Preview)`, 'info');
             return;
         }
 
         try {
-            await this.device.setLightingEffect(this.currentZone, this.currentMode, r, g, b);
-            // Sync secondary zone
+            // Send to current zone with frequency (periodMs) and intensity
+            await this.device.setLightingEffect(
+                this.currentZone, 
+                this.currentMode, 
+                r, g, b, 
+                this.currentPeriod, 
+                this.currentIntensity
+            );
+
+            // Also mirror effect to the other zone so all device LEDs stay in sync
             const otherZone = this.currentZone === 0 ? 1 : 0;
-            try { await this.device.setLightingEffect(otherZone, this.currentMode, r, g, b); } catch (e) {}
-            this.showToast(`Lighting applied & saved to NV Flash (${this.currentColor.toUpperCase()})`, 'success');
+            try { 
+                await this.device.setLightingEffect(
+                    otherZone, 
+                    this.currentMode, 
+                    r, g, b, 
+                    this.currentPeriod, 
+                    this.currentIntensity
+                ); 
+            } catch (e) {}
+
+            this.showToast(`Lighting applied & saved to NV Flash (${modeLabel}, ${this.currentPeriod}ms)`, 'success');
         } catch (err) {
             this.showToast(err.message, 'error');
         }

@@ -195,7 +195,7 @@
 
                             <div class="command-preview-box">
                                 <span class="preview-title">Wire Command Dispatch Preview:</span>
-                                <code class="hex-preview" id="dpiHexPreview">TX 0x10 FF 07 31 00 06 40 (Function 0x03)</code>
+                                <code class="hex-preview" id="dpiHexPreview">TX 0x10 FF 0A 31 00 06 40 (Function 0x03)</code>
                             </div>
                         </div>
                     </div>
@@ -204,13 +204,13 @@
                     <div class="card glass-card">
                         <div class="card-header">
                             <div class="card-title-group">
-                                <span class="feature-tag">0x8061</span>
-                                <h2>Report Rate & Performance Tuning</h2>
+                                <span class="feature-tag">0x8061 / 0x8100</span>
+                                <h2>Report Rate & Sensor Architecture</h2>
                             </div>
                             <span class="card-badge" id="pollingBadge">1000 Hz</span>
                         </div>
                         <div class="card-body">
-                            <p class="section-desc">Configure USB bus polling interval. Higher report rates decrease input latency for competitive gaming.</p>
+                            <p class="section-desc">Configure USB bus polling interval. Higher report rates decrease input latency for tournament gaming.</p>
                             
                             <div class="rate-selector-grid">
                                 <button class="rate-card" data-rate="125">
@@ -235,29 +235,32 @@
                                 </button>
                             </div>
 
-                            <!-- Sensor Parameters & Angle Snapping -->
+                            <!-- Hardware Tracking Architecture Note -->
                             <div class="sensor-tuning-group">
-                                <h3 class="group-title">Hardware Sensor Features</h3>
+                                <h3 class="group-title">Hardware Tracking Characteristics</h3>
+                                
                                 <div class="tuning-row">
                                     <div class="tuning-info">
-                                        <span class="tuning-title">Angle Snapping (Prediction)</span>
-                                        <span class="tuning-desc">Artificially straightens horizontal and vertical mouse movements.</span>
+                                        <span class="tuning-title">HERO Optical Tracking Engine</span>
+                                        <span class="tuning-desc">Pure 1:1 hardware pixel tracking. Engineered by Logitech with zero hardware smoothing, filtering, or artificial acceleration.</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="chkAngleSnapping">
-                                        <span class="slider-toggle"></span>
-                                    </label>
+                                    <div class="status-pill-badge badge-green">1:1 Raw Active</div>
                                 </div>
 
                                 <div class="tuning-row">
                                     <div class="tuning-info">
-                                        <span class="tuning-title">Separate X / Y Axis Sensitivity</span>
-                                        <span class="tuning-desc">Allows independent DPI configuration for horizontal and vertical axis.</span>
+                                        <span class="tuning-title">Angle Snapping (Path Prediction)</span>
+                                        <span class="tuning-desc">Firmware 0x2240 query: The HERO 16K/25K sensor omits artificial angle snapping to preserve pure esports accuracy.</span>
                                     </div>
-                                    <label class="switch">
-                                        <input type="checkbox" id="chkSeparateXY">
-                                        <span class="slider-toggle"></span>
-                                    </label>
+                                    <div class="status-pill-badge badge-muted">Disabled in Hardware</div>
+                                </div>
+
+                                <div class="tuning-row">
+                                    <div class="tuning-info">
+                                        <span class="tuning-title">Axis Calibration</span>
+                                        <span class="tuning-desc">X and Y optical sensor arrays are factory-synchronized to maintain exact circular consistency across sweeps.</span>
+                                    </div>
+                                    <div class="status-pill-badge badge-muted">Synchronized 1:1</div>
                                 </div>
                             </div>
                         </div>
@@ -275,10 +278,23 @@
                                 <span class="feature-tag">0x8110</span>
                                 <h2>Physical Button Assignment</h2>
                             </div>
-                            <span class="card-badge" id="buttonSpyBadge">Spy Inactive</span>
+                            <div class="header-action-btns">
+                                <button class="btn btn-xs btn-outline" id="btnIdentifyDevice" title="Rapidly pulses mouse LEDs to visually locate the peripheral">
+                                    💡 Flash Mouse
+                                </button>
+                                <button class="btn btn-xs btn-outline" id="btnIdentifyButton" title="Press any switch on your mouse to automatically identify and focus it">
+                                    🎯 Identify Button
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
-                            <p class="section-desc">Select a physical button on your mouse to view and customize its onboard memory action.</p>
+                            <!-- Identify Banner (active when Identify Button is enabled) -->
+                            <div class="identify-banner hidden" id="identifyBanner">
+                                <div class="pulsing-record-dot"></div>
+                                <span><strong>Listening for Hardware Click:</strong> Press any physical button on your mouse to identify it...</span>
+                            </div>
+
+                            <p class="section-desc">Select a physical button on your mouse to view, test, and customize its onboard memory action.</p>
                             
                             <div class="button-list-grid" id="physicalButtonList">
                                 <!-- Generated dynamically for buttons 1-11 -->
@@ -334,7 +350,7 @@
                             <div class="action-pane" id="pane-keystroke">
                                 <div class="keystroke-recorder-box">
                                     <label class="form-label">Keyboard Key</label>
-                                    <input type="text" id="keystrokeInput" class="form-input key-recorder-input" placeholder="Press any key (e.g. Space, E, F, 1)..." readonly />
+                                    <input type="text" id="keystrokeInput" class="form-input key-recorder-input" placeholder="Click here & press any key (e.g. Space, E, F, 1)..." readonly />
                                     
                                     <label class="form-label" style="margin-top:16px;">Modifier Keys</label>
                                     <div class="modifier-checkboxes">
@@ -522,7 +538,8 @@
                                     </div>
                                 </div>
 
-                                <div class="rgb-color-picker-row">
+                                <!-- Color Picker (Visible for Static and Breathing) -->
+                                <div class="rgb-color-picker-row" id="colorPickerRow">
                                     <label class="form-label">Color Selection</label>
                                     <div class="picker-flex">
                                         <input type="color" id="rgbColorInput" value="#00e5ff" class="color-swatch-picker" />
@@ -538,13 +555,37 @@
                                     </div>
                                 </div>
 
+                                <!-- Effect Frequency / Timeline Slider (for Breathing & Color Cycle) -->
+                                <div class="effect-param-box" id="effectParamBox">
+                                    <div class="slider-param-row">
+                                        <div class="param-label-flex">
+                                            <span class="form-label">Timeline Frequency / Period</span>
+                                            <span class="param-value-badge" id="periodValueBadge">3,000 ms (3.0s cycle)</span>
+                                        </div>
+                                        <input type="range" id="periodSlider" min="500" max="10000" step="250" value="3000" class="neon-slider" />
+                                        <div class="slider-labels">
+                                            <span>500 ms (Fast)</span>
+                                            <span>5,000 ms</span>
+                                            <span>10,000 ms (Slow)</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="slider-param-row" style="margin-top:14px;">
+                                        <div class="param-label-flex">
+                                            <span class="form-label">LED Brightness / Intensity</span>
+                                            <span class="param-value-badge" id="intensityValueBadge">100%</span>
+                                        </div>
+                                        <input type="range" id="intensitySlider" min="10" max="100" step="5" value="100" class="neon-slider" />
+                                    </div>
+                                </div>
+
                                 <div class="rgb-preview-display">
                                     <div class="rgb-glow-demo" id="rgbGlowDemo"></div>
                                     <span class="rgb-status-label" id="rgbStatusLabel">Active: Logitech Cyan (#00E5FF)</span>
                                 </div>
 
                                 <button class="btn btn-accent btn-full" id="btnApplyRgb">
-                                    Dispatch Long Report (0x11) & Save to NV Flash
+                                    Apply Lighting & Save to NV Flash EEPROM
                                 </button>
                             </div>
                         </div>
@@ -555,7 +596,7 @@
                         <div class="card-header">
                             <div class="card-title-group">
                                 <span class="feature-tag">Persistence</span>
-                                <h2>Non-Volatile Flash Lighting</h2>
+                                <h2>Hardware Flash Lighting Mechanics</h2>
                             </div>
                             <span class="card-badge badge-success">0x01 NV Flag</span>
                         </div>
@@ -564,21 +605,21 @@
                             
                             <div class="wire-breakdown-box">
                                 <span class="breakdown-title">Packet Structure (Long Report 0x11, 20 Bytes):</span>
-                                <code>0x11 [devIdx] [featIdx] [fn 0x03 | sw] [zone] [mode] [R] [G] [B] [0x02] 00 00 00 00 00 00 [0x01 PERSISTENCE] 00 00 00</code>
+                                <code>0x11 [devIdx] [featIdx] [fn 0x03] [zone] [mode] [R] [G] [B] [periodHi] [periodLo] [intensity] 00 [0x01 PERSISTENCE] 00 00 00</code>
                             </div>
 
                             <div class="feature-list-simple">
                                 <div class="f-item">
                                     <span class="f-bullet">✓</span>
-                                    <span>Software Lighting Control (Function 0x08) automatically enabled before write.</span>
+                                    <span><strong>Color Cycle (Mode 0x03)</strong>: Period is packed in bytes 7–8 in milliseconds with 100% intensity in byte 9.</span>
                                 </div>
                                 <div class="f-item">
                                     <span class="f-bullet">✓</span>
-                                    <span>Synchronizes primary logo and DPI LED clusters seamlessly.</span>
+                                    <span><strong>Breathing (Mode 0x02)</strong>: R, G, B color values combined with period (frequency) and intensity.</span>
                                 </div>
                                 <div class="f-item">
                                     <span class="f-bullet">✓</span>
-                                    <span>Persists across PC reboots, power cuts, and operating system switches.</span>
+                                    <span><strong>Non-Volatile (0x01)</strong>: Persists across reboots, unplugs, and operating system switches.</span>
                                 </div>
                             </div>
                         </div>
@@ -593,12 +634,29 @@
                         <div class="card-header">
                             <div class="card-title-group">
                                 <span class="feature-tag">0x1004 / 0x1000</span>
-                                <h2>Battery Status & Telemetry</h2>
+                                <h2>Battery & Power Telemetry</h2>
                             </div>
                             <span class="card-badge" id="batteryStateBadge">Awaiting Telemetry</span>
                         </div>
                         <div class="card-body">
-                            <div class="battery-hero-gauge">
+                            <!-- Notice for Wired USB Devices -->
+                            <div class="wired-power-box" id="wiredPowerNotice">
+                                <div class="power-status-icon">
+                                    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#00e5ff" stroke-width="2">
+                                        <path d="M18 20V10"/>
+                                        <path d="M12 20V4"/>
+                                        <path d="M6 20v-6"/>
+                                    </svg>
+                                </div>
+                                <div class="power-status-text">
+                                    <h3 class="power-status-title">Wired USB Device (Bus Powered)</h3>
+                                    <p class="power-status-desc">
+                                        Your Logitech G502 is connected via direct USB cable and draws continuous 5V power from the host bus. Battery monitoring and charging telemetry apply exclusively to wireless Lightspeed devices (such as G Pro Wireless, G502 LIGHTSPEED, G305).
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="battery-hero-gauge hidden" id="wirelessBatteryGauge">
                                 <div class="battery-ring">
                                     <span class="battery-percentage-big" id="batteryBigPercent">--%</span>
                                     <span class="battery-status-sub" id="batteryStatusSub">Disconnected</span>
@@ -607,26 +665,22 @@
 
                             <div class="battery-details-grid">
                                 <div class="b-metric">
-                                    <span class="m-label">Charging State</span>
-                                    <span class="m-val" id="metricChargingState">--</span>
+                                    <span class="m-label">Power Source</span>
+                                    <span class="m-val" id="metricPowerSource">USB 5V Bus</span>
                                 </div>
                                 <div class="b-metric">
-                                    <span class="m-label">Battery Level</span>
-                                    <span class="m-val" id="metricBatteryLevel">--</span>
+                                    <span class="m-label">Operating Power State</span>
+                                    <span class="m-val" id="metricPowerState">Continuous 1000 Hz</span>
                                 </div>
                                 <div class="b-metric">
-                                    <span class="m-label">Wireless Charging (PowerPlay)</span>
-                                    <span class="m-val" id="metricPowerPlay">--</span>
+                                    <span class="m-label">Battery Hardware</span>
+                                    <span class="m-val" id="metricBatteryHard">N/A (Corded Device)</span>
                                 </div>
                                 <div class="b-metric">
-                                    <span class="m-label">Feature Protocol</span>
-                                    <span class="m-val" id="metricBatteryProto">0x1004 Unified</span>
+                                    <span class="m-label">Hardware Protocol</span>
+                                    <span class="m-val">HID++ 2.0 / 4.2</span>
                                 </div>
                             </div>
-
-                            <button class="btn btn-secondary btn-full" id="btnRefreshBattery" style="margin-top:20px;">
-                                Query Battery Telemetry (Function 0x01)
-                            </button>
                         </div>
                     </div>
 
@@ -637,33 +691,29 @@
                                 <span class="feature-tag">Energy</span>
                                 <h2>Power Modes & Inactivity Sleep</h2>
                             </div>
-                            <span class="card-badge badge-cyan">Performance Mode</span>
+                            <span class="card-badge badge-cyan">Tournament Power</span>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label">Operating Power Mode</label>
+                                <label class="form-label">Operating Performance Profile</label>
                                 <div class="power-mode-pills">
                                     <button class="pm-pill active" data-pm="1">
-                                        <span class="pm-name">Performance Mode</span>
-                                        <span class="pm-desc">Maximum sensor accuracy & 1000 Hz continuous report rate</span>
+                                        <span class="pm-name">Tournament Performance (Active)</span>
+                                        <span class="pm-desc">Maximum sensor accuracy & 1000 Hz continuous report rate with zero sleep interruptions</span>
                                     </button>
-                                    <button class="pm-pill" data-pm="2">
-                                        <span class="pm-name">Endurance Mode</span>
-                                        <span class="pm-desc">Power-saving report rate for extended battery lifetime</span>
+                                    <button class="pm-pill disabled" data-pm="2" title="Endurance Mode is for battery-powered wireless mice">
+                                        <span class="pm-name">Endurance Mode (Wireless Only)</span>
+                                        <span class="pm-desc">Low-power throttling for battery longevity (Not applicable to wired G502)</span>
                                     </button>
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-top:24px;">
-                                <label class="form-label">Inactivity Sleep Timeout</label>
-                                <select class="form-select" id="selSleepTimeout">
-                                    <option value="1">1 Minute</option>
-                                    <option value="2">2 Minutes</option>
-                                    <option value="5" selected>5 Minutes (Recommended)</option>
-                                    <option value="10">10 Minutes</option>
-                                    <option value="15">15 Minutes</option>
-                                    <option value="0">Never Sleep</option>
-                                </select>
+                            <div class="info-callout" style="margin-top:20px;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                <div>
+                                    <strong>Continuous Tournament Accuracy</strong>
+                                    <p>Wired G-series mice operate with unthrottled sensor fidelity. Inactivity sleep timeouts do not power down the optical sensor while plugged into active USB ports.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
