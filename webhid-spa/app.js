@@ -1,68 +1,158 @@
 /**
- * Logitech HID++ 2.0 WebHID Lab - Application Controller
- * Handles UI interactions, WebHID hardware bridging, simulation engine, and live telemetry.
+ * Universal OMM (Onboard Memory Manager) - Application Controller
+ * Zero-install browser-native peripheral manager using WebHID.
  */
 
-import { HidppDevice, HIDPP_FEATURES, FEATURE_NAMES } from './hidpp.js';
+import { 
+    HidppDevice, 
+    HIDPP_FEATURES, 
+    FEATURE_NAMES, 
+    PHYSICAL_BUTTONS,
+    BUTTON_BEHAVIOR,
+    REMAPPING_OPCODES,
+    FUNCTION_OPCODES,
+    CONSUMER_KEYS
+} from './hidpp.js';
 
 class AppController {
     constructor() {
         this.device = new HidppDevice();
-        this.isSimulated = false;
         this.isPaused = false;
         this.packetHistory = [];
         this.maxPackets = 500;
-        
-        // State
-        this.currentDpi = 1600;
+        this.isSpyActive = false;
+
+        // DPI State (OMM Multi-Stage Model)
+        this.dpiStages = [400, 800, 1600, 3200, 6400];
+        this.activeStageIndex = 2; // 1600 DPI
+        this.defaultStageIndex = 2;
+        this.sniperStageIndex = 0; // 400 DPI
         this.currentRate = 1000;
+        this.angleSnapping = false;
+        this.separateXY = false;
+
+        // Button Remapping State
+        this.physicalButtons = JSON.parse(JSON.stringify(PHYSICAL_BUTTONS));
+        this.selectedButtonId = 1;
+        this.recordedKey = null;
+
+        // Profiles State
         this.currentSlot = 1;
+        this.profileNames = {
+            1: 'Default / FPS',
+            2: 'MMO / Macros',
+            3: 'Sniper Low',
+            4: 'Productivity',
+            5: 'General'
+        };
+        this.onboardMode = true;
+
+        // RGB State
         this.currentZone = 0;
         this.currentMode = 1;
         this.currentColor = '#00e5ff';
 
+        // Battery State
+        this.batteryInfo = { percent: 80, isCharging: false, level: 4 };
+
         this.initDom();
+        this.checkBrowserCompatibility();
         this.bindEvents();
-        this.updateGauge(this.currentDpi);
+        this.renderDpiStages();
+        this.renderPhysicalButtons();
+        this.updateGauge(this.dpiStages[this.activeStageIndex]);
     }
 
+    /* -------------------------------------------------------------
+     * DOM Initialization & Compatibility Check
+     * ------------------------------------------------------------- */
     initDom() {
-        // Status & Connectivity
+        // Browser Warning Modal
+        this.browserWarningModal = document.getElementById('browserWarningModal');
+        this.detectedBrowserName = document.getElementById('detectedBrowserName');
+        this.btnDismissWarning = document.getElementById('btnDismissWarning');
+
+        // Header
         this.statusDot = document.getElementById('statusDot');
         this.statusLabel = document.getElementById('statusLabel');
         this.deviceNameBadge = document.getElementById('deviceNameBadge');
         this.btnConnect = document.getElementById('btnConnect');
-        this.btnSimulate = document.getElementById('btnSimulate');
         this.btnDisconnect = document.getElementById('btnDisconnect');
+        this.batteryPill = document.getElementById('batteryPill');
+        this.batteryText = document.getElementById('batteryText');
+        this.batteryFillLevel = document.getElementById('batteryFillLevel');
+        this.chargingIndicator = document.getElementById('chargingIndicator');
 
-        // DPI
+        // Navigation Tabs
+        this.navTabs = document.querySelectorAll('.nav-tab');
+        this.tabPanes = document.querySelectorAll('.tab-pane');
+
+        // Sensor & DPI Tab
         this.dpiDisplayValue = document.getElementById('dpiDisplayValue');
         this.gaugeBar = document.getElementById('gaugeBar');
         this.dpiSlider = document.getElementById('dpiSlider');
         this.dpiHexPreview = document.getElementById('dpiHexPreview');
         this.dpiFeatureBadge = document.getElementById('dpiFeatureBadge');
-        this.presetChips = document.querySelectorAll('.preset-chips .chip');
-
-        // Polling Rate
+        this.dpiStageChipsContainer = document.getElementById('dpiStageChipsContainer');
+        this.btnAddDpiStage = document.getElementById('btnAddDpiStage');
+        this.btnRemoveDpiStage = document.getElementById('btnRemoveDpiStage');
+        this.btnSetDefaultDpi = document.getElementById('btnSetDefaultDpi');
+        this.btnSetSniperDpi = document.getElementById('btnSetSniperDpi');
         this.rateCards = document.querySelectorAll('.rate-card');
         this.pollingBadge = document.getElementById('pollingBadge');
+        this.chkAngleSnapping = document.getElementById('chkAngleSnapping');
+        this.chkSeparateXY = document.getElementById('chkSeparateXY');
 
-        // Profiles
+        // Buttons & Remapping Tab
+        this.physicalButtonList = document.getElementById('physicalButtonList');
+        this.buttonSpyBadge = document.getElementById('buttonSpyBadge');
+        this.btnToggleSpy = document.getElementById('btnToggleSpy');
+        this.testerDisplay = document.getElementById('testerDisplay');
+        this.selectedButtonTitle = document.getElementById('selectedButtonTitle');
+        this.selectedButtonBadge = document.getElementById('selectedButtonBadge');
+        this.actionCatTabs = document.querySelectorAll('.action-cat-tab');
+        this.actionPanes = document.querySelectorAll('.action-pane');
+        this.optButtons = document.querySelectorAll('.opt-btn');
+        this.keystrokeInput = document.getElementById('keystrokeInput');
+        this.keystrokePreviewText = document.getElementById('keystrokePreviewText');
+        this.modCtrl = document.getElementById('modCtrl');
+        this.modShift = document.getElementById('modShift');
+        this.modAlt = document.getElementById('modAlt');
+        this.modWin = document.getElementById('modWin');
+        this.btnAssignAction = document.getElementById('btnAssignAction');
+        this.btnCommitRemappings = document.getElementById('btnCommitRemappings');
+
+        // Profiles Tab
         this.slotTabs = document.querySelectorAll('.slot-tab');
         this.activeProfileBadge = document.getElementById('activeProfileBadge');
+        this.profileNameInput = document.getElementById('profileNameInput');
         this.sectorAddr = document.getElementById('sectorAddr');
         this.btnActivateSlot = document.getElementById('btnActivateSlot');
         this.btnCommitFlash = document.getElementById('btnCommitFlash');
+        this.chkOnboardMode = document.getElementById('chkOnboardMode');
+        this.onboardModeBadge = document.getElementById('onboardModeBadge');
 
-        // RGB
+        // RGB Tab
         this.zonePills = document.querySelectorAll('.zone-pill');
         this.modePills = document.querySelectorAll('.mode-pill');
         this.rgbColorInput = document.getElementById('rgbColorInput');
         this.colorHexText = document.getElementById('colorHexText');
         this.swatches = document.querySelectorAll('.palette-swatches .swatch');
+        this.rgbGlowDemo = document.getElementById('rgbGlowDemo');
+        this.rgbStatusLabel = document.getElementById('rgbStatusLabel');
         this.btnApplyRgb = document.getElementById('btnApplyRgb');
 
-        // Discovery & Telemetry
+        // Power Tab
+        this.batteryBigPercent = document.getElementById('batteryBigPercent');
+        this.batteryStatusSub = document.getElementById('batteryStatusSub');
+        this.metricChargingState = document.getElementById('metricChargingState');
+        this.metricBatteryLevel = document.getElementById('metricBatteryLevel');
+        this.metricPowerPlay = document.getElementById('metricPowerPlay');
+        this.btnRefreshBattery = document.getElementById('btnRefreshBattery');
+        this.pmPills = document.querySelectorAll('.pm-pill');
+        this.selSleepTimeout = document.getElementById('selSleepTimeout');
+
+        // Sniffer Tab
         this.btnRefreshDiscovery = document.getElementById('btnRefreshDiscovery');
         this.featuresTableBody = document.getElementById('featuresTableBody');
         this.packetStreamFeed = document.getElementById('packetStreamFeed');
@@ -73,19 +163,66 @@ class AppController {
         this.toastContainer = document.getElementById('toastContainer');
     }
 
+    checkBrowserCompatibility() {
+        const hasWebHID = 'hid' in navigator;
+        const ua = navigator.userAgent;
+        let browserName = 'Chromium';
+
+        if (ua.includes('Firefox')) browserName = 'Mozilla Firefox';
+        else if (ua.includes('Safari') && !ua.includes('Chrome')) browserName = 'Apple Safari';
+        else if (ua.includes('Edg/')) browserName = 'Microsoft Edge';
+        else if (ua.includes('Chrome')) browserName = 'Google Chrome';
+        else if (ua.includes('Opera') || ua.includes('OPR')) browserName = 'Opera';
+
+        if (!hasWebHID || browserName === 'Mozilla Firefox' || browserName === 'Apple Safari') {
+            this.detectedBrowserName.textContent = browserName;
+            this.browserWarningModal.classList.remove('hidden');
+            this.btnConnect.disabled = true;
+            this.btnConnect.title = 'WebHID is not supported in this browser';
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * Event Listeners & Binding
+     * ------------------------------------------------------------- */
     bindEvents() {
-        // Connect & Disconnect
+        // Warning Modal Dismiss
+        this.btnDismissWarning.addEventListener('click', () => {
+            this.browserWarningModal.classList.add('hidden');
+        });
+
+        // Connectivity
         this.btnConnect.addEventListener('click', () => this.handleConnect());
-        this.btnSimulate.addEventListener('click', () => this.handleSimulate());
         this.btnDisconnect.addEventListener('click', () => this.handleDisconnect());
 
-        // Packet Logger Listener
-        this.device.onPacket((pkt) => this.handlePacketLogged(pkt));
+        // Nav Tabs Switching
+        this.navTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const target = tab.dataset.tab;
+                this.navTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
 
-        // DPI Events
+                this.tabPanes.forEach(pane => {
+                    if (pane.id === `tab-${target}`) {
+                        pane.classList.add('active');
+                    } else {
+                        pane.classList.remove('active');
+                    }
+                });
+            });
+        });
+
+        // Device Packet & Event Streams
+        this.device.onPacket((pkt) => this.handlePacketLogged(pkt));
+        this.device.onButtonEvent((evt) => this.handleButtonSpyEvent(evt));
+        this.device.onBatteryUpdate((b) => this.updateBatteryUI(b));
+
+        // DPI Slider & Presets
         this.dpiSlider.addEventListener('input', (e) => {
             const val = parseInt(e.target.value, 10);
-            this.setDpiState(val, false);
+            this.dpiStages[this.activeStageIndex] = val;
+            this.updateActiveDpiDisplay(val);
+            this.renderDpiStages();
         });
 
         this.dpiSlider.addEventListener('change', async (e) => {
@@ -93,24 +230,111 @@ class AppController {
             await this.applyDpi(val);
         });
 
-        this.presetChips.forEach(chip => {
-            chip.addEventListener('click', async () => {
-                const val = parseInt(chip.dataset.dpi, 10);
-                this.dpiSlider.value = val;
-                this.setDpiState(val, true);
-                await this.applyDpi(val);
-            });
+        this.btnAddDpiStage.addEventListener('click', () => this.addDpiStage());
+        this.btnRemoveDpiStage.addEventListener('click', () => this.removeDpiStage());
+        this.btnSetDefaultDpi.addEventListener('click', () => {
+            this.defaultStageIndex = this.activeStageIndex;
+            this.renderDpiStages();
+            this.showToast(`DPI ${this.dpiStages[this.activeStageIndex]} set as Default Stage`, 'success');
+        });
+        this.btnSetSniperDpi.addEventListener('click', () => {
+            this.sniperStageIndex = this.activeStageIndex;
+            this.renderDpiStages();
+            this.showToast(`DPI ${this.dpiStages[this.activeStageIndex]} set as Sniper Shift`, 'success');
         });
 
-        // Polling Rate Events
+        // Polling Rate
         this.rateCards.forEach(card => {
-            card.addEventListener('click', async () => {
+            card.addEventListener('click', () => {
                 const rate = parseInt(card.dataset.rate, 10);
-                await this.applyPollingRate(rate);
+                this.applyPollingRate(rate);
             });
         });
 
-        // Profile Events
+        // Sensor Tuning Switches
+        this.chkAngleSnapping.addEventListener('change', async (e) => {
+            this.angleSnapping = e.target.checked;
+            try {
+                if (this.device.isConnected) {
+                    await this.device.setAngleSnapping(this.angleSnapping);
+                }
+                this.showToast(`Angle Snapping: ${this.angleSnapping ? 'Enabled' : 'Disabled'}`, 'info');
+            } catch (err) {
+                this.showToast(err.message, 'error');
+            }
+        });
+
+        this.chkSeparateXY.addEventListener('change', (e) => {
+            this.separateXY = e.target.checked;
+            this.showToast(`Independent X/Y DPI: ${this.separateXY ? 'Active' : 'Unified'}`, 'info');
+        });
+
+        // Button Remapping Events
+        this.actionCatTabs.forEach(catTab => {
+            catTab.addEventListener('click', () => {
+                const cat = catTab.dataset.cat;
+                this.actionCatTabs.forEach(c => c.classList.remove('active'));
+                catTab.classList.add('active');
+
+                this.actionPanes.forEach(pane => {
+                    if (pane.id === `pane-${cat}`) {
+                        pane.classList.add('active');
+                    } else {
+                        pane.classList.remove('active');
+                    }
+                });
+            });
+        });
+
+        this.optButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.optButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Keystroke Recording
+        this.keystrokeInput.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            this.recordedKey = {
+                key: e.key.toUpperCase(),
+                code: e.keyCode
+            };
+            this.updateKeystrokeDisplay();
+        });
+
+        [this.modCtrl, this.modShift, this.modAlt, this.modWin].forEach(chk => {
+            chk.addEventListener('change', () => this.updateKeystrokeDisplay());
+        });
+
+        this.btnAssignAction.addEventListener('click', () => this.applyActionAssignment());
+        this.btnCommitRemappings.addEventListener('click', () => this.commitAllRemappings());
+
+        this.btnToggleSpy.addEventListener('click', async () => {
+            if (!this.device.isConnected) {
+                this.showToast('Connect device to use live button tester', 'error');
+                return;
+            }
+            if (!this.isSpyActive) {
+                const ok = await this.device.startButtonSpy();
+                if (ok) {
+                    this.isSpyActive = true;
+                    this.buttonSpyBadge.textContent = 'Spy Active (Listening)';
+                    this.buttonSpyBadge.classList.add('badge-success');
+                    this.btnToggleSpy.textContent = 'Disable Live Spy';
+                    this.showToast('Hardware button spy active. Click mouse buttons!', 'success');
+                }
+            } else {
+                await this.device.stopButtonSpy();
+                this.isSpyActive = false;
+                this.buttonSpyBadge.textContent = 'Spy Inactive';
+                this.buttonSpyBadge.classList.remove('badge-success');
+                this.btnToggleSpy.textContent = 'Enable Live Spy';
+                this.showToast('Hardware button spy disabled', 'info');
+            }
+        });
+
+        // Profiles Slot Management
         this.slotTabs.forEach(tab => {
             tab.addEventListener('click', () => {
                 const slot = parseInt(tab.dataset.slot, 10);
@@ -118,28 +342,38 @@ class AppController {
             });
         });
 
-        this.btnActivateSlot.addEventListener('click', async () => {
-            await this.applyActiveProfile(this.currentSlot);
+        this.btnActivateSlot.addEventListener('click', () => this.applyActiveProfile(this.currentSlot));
+        this.btnCommitFlash.addEventListener('click', () => this.applyCommitFlash(this.currentSlot));
+
+        this.chkOnboardMode.addEventListener('change', async (e) => {
+            this.onboardMode = e.target.checked;
+            this.onboardModeBadge.textContent = this.onboardMode ? 'Onboard Mode Active' : 'Software/Host Mode';
+            if (this.device.isConnected) {
+                await this.device.setOnboardMode(this.onboardMode ? 1 : 2);
+            }
+            this.showToast(`Operating Mode: ${this.onboardMode ? 'Onboard Memory' : 'Host Mode'}`, 'info');
         });
 
-        this.btnCommitFlash.addEventListener('click', async () => {
-            await this.applyCommitFlash(this.currentSlot);
+        this.profileNameInput.addEventListener('input', (e) => {
+            this.profileNames[this.currentSlot] = e.target.value;
+            const slotTab = document.querySelector(`.slot-tab[data-slot="${this.currentSlot}"] .slot-name`);
+            if (slotTab) slotTab.textContent = e.target.value;
         });
 
-        // RGB Events
-        this.zonePills.forEach(pill => {
-            pill.addEventListener('click', () => {
+        // RGB Lighting
+        this.zonePills.forEach(zp => {
+            zp.addEventListener('click', () => {
                 this.zonePills.forEach(p => p.classList.remove('active'));
-                pill.classList.add('active');
-                this.currentZone = parseInt(pill.dataset.zone, 10);
+                zp.classList.add('active');
+                this.currentZone = parseInt(zp.dataset.zone, 10);
             });
         });
 
-        this.modePills.forEach(pill => {
-            pill.addEventListener('click', () => {
+        this.modePills.forEach(mp => {
+            mp.addEventListener('click', () => {
                 this.modePills.forEach(p => p.classList.remove('active'));
-                pill.classList.add('active');
-                this.currentMode = parseInt(pill.dataset.mode, 10);
+                mp.classList.add('active');
+                this.currentMode = parseInt(mp.dataset.mode, 10);
             });
         });
 
@@ -147,57 +381,47 @@ class AppController {
             this.setColor(e.target.value);
         });
 
-        this.rgbColorInput.addEventListener('change', async (e) => {
-            this.setColor(e.target.value);
-            await this.applyLighting();
-        });
-
-        this.swatches.forEach(swatch => {
-            swatch.addEventListener('click', async () => {
-                this.setColor(swatch.dataset.color);
-                await this.applyLighting();
+        this.swatches.forEach(sw => {
+            sw.addEventListener('click', () => {
+                this.setColor(sw.dataset.color);
             });
         });
 
-        this.btnApplyRgb.addEventListener('click', async () => {
-            await this.applyLighting();
+        this.btnApplyRgb.addEventListener('click', () => this.applyLighting());
+
+        // Power & Battery Tab
+        this.btnRefreshBattery.addEventListener('click', () => this.refreshBatteryStatus());
+        this.pmPills.forEach(pm => {
+            pm.addEventListener('click', () => {
+                this.pmPills.forEach(p => p.classList.remove('active'));
+                pm.classList.add('active');
+                this.showToast(`Power Mode updated: ${pm.querySelector('.pm-name').textContent}`, 'info');
+            });
         });
 
-        // Discovery refresh
-        this.btnRefreshDiscovery.addEventListener('click', async () => {
-            await this.refreshDiscovery();
-        });
-
-        // Sniffer console controls
+        // Sniffer Tab
+        this.btnRefreshDiscovery.addEventListener('click', () => this.refreshDiscovery());
         this.btnPausePackets.addEventListener('click', () => {
             this.isPaused = !this.isPaused;
             this.btnPausePackets.textContent = this.isPaused ? 'Resume' : 'Pause';
-            this.showToast(this.isPaused ? 'Telemetry paused' : 'Telemetry resumed');
         });
-
         this.btnClearPackets.addEventListener('click', () => {
-            this.packetStreamFeed.innerHTML = '';
             this.packetHistory = [];
+            this.packetStreamFeed.innerHTML = '';
             this.packetCountBadge.textContent = '0 Packets';
-            this.showToast('Packet log cleared');
         });
-
-        this.btnExportLog.addEventListener('click', () => {
-            this.exportPackets();
-        });
+        this.btnExportLog.addEventListener('click', () => this.exportPackets());
     }
 
     /* -------------------------------------------------------------
-     * Connectivity & Hardware Handling
+     * Hardware Connection Lifecycle
      * ------------------------------------------------------------- */
-
     async handleConnect() {
         try {
-            this.showToast('Requesting WebHID device...', 'info');
+            this.showToast('Requesting Logitech WebHID device...', 'info');
             const info = await this.device.requestAndOpen();
-            this.isSimulated = false;
 
-            this.updateConnectedUI(info.name, `VID: 0x${info.vid.toString(16).toUpperCase()} PID: 0x${info.pid.toString(16).toUpperCase()}`);
+            this.updateConnectedUI(info.name, `VID: 0x${info.vid.toString(16).toUpperCase()} PID: 0x${info.pid.toString(16).toUpperCase()} (${info.transport})`);
             this.showToast(`Connected: ${info.name}`, 'success');
 
             await this.syncHardwareState();
@@ -207,104 +431,431 @@ class AppController {
         }
     }
 
-    handleSimulate() {
-        this.isSimulated = true;
-        this.device.isConnected = true;
-        this.device.deviceInfo = {
-            name: 'Logitech G502 HERO Gaming Mouse (Simulated)',
-            vid: 0x046D,
-            pid: 0xC08B,
-            protocolVersion: 'HID++ 2.0 / 4.2'
-        };
-
-        // Populate standard G502 HERO runtime index mappings
-        this.device.featureIndexMap.set(HIDPP_FEATURES.FEATURE_SET, 0x01);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.DEVICE_INFO, 0x02);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.DEVICE_NAME, 0x03);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.ADJUSTABLE_DPI, 0x07);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.DPI_SENSOR, 0x08);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.REPORT_RATE, 0x09);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.COLOR_LED, 0x0D);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.ONBOARD_PROFILES, 0x0B);
-        this.device.featureIndexMap.set(HIDPP_FEATURES.BUTTON_SPY, 0x0C);
-
-        for (const [feat, idx] of this.device.featureIndexMap.entries()) {
-            this.device.indexFeatureMap.set(idx, feat);
-        }
-
-        this.updateConnectedUI(
-            this.device.deviceInfo.name, 
-            'VID: 0x046D PID: 0xC08B (Simulated Wire)',
-            true
-        );
-
-        this.updateFeaturesTable();
-        this.dpiFeatureBadge.textContent = 'Runtime Idx: 0x07 (Active)';
-        this.dpiFeatureBadge.classList.add('badge-success');
-
-        // Log initial discovery simulation packets
-        this.emitSimulatedDiscoveryPackets();
-        this.showToast('G502 HERO Simulation Mode active', 'success');
-    }
-
     async handleDisconnect() {
-        if (!this.isSimulated) {
-            await this.device.disconnect();
-        }
-        this.isSimulated = false;
-        this.device.isConnected = false;
+        await this.device.disconnect();
+        this.isSpyActive = false;
 
         this.statusDot.className = 'status-indicator-dot';
         this.statusLabel.textContent = 'DISCONNECTED';
-        this.deviceNameBadge.textContent = 'No Hardware Bound';
+        this.deviceNameBadge.textContent = 'No Hardware Connected';
         this.btnConnect.classList.remove('hidden');
-        this.btnSimulate.classList.remove('hidden');
         this.btnDisconnect.classList.add('hidden');
-        this.dpiFeatureBadge.textContent = 'Awaiting Sync';
+        this.batteryPill.classList.add('hidden');
+        this.dpiFeatureBadge.textContent = 'Awaiting Connection';
         this.dpiFeatureBadge.classList.remove('badge-success');
+        this.buttonSpyBadge.textContent = 'Spy Inactive';
+        this.buttonSpyBadge.classList.remove('badge-success');
 
-        this.showToast('Device disconnected');
+        this.showToast('Peripheral disconnected', 'info');
     }
 
-    updateConnectedUI(name, subtitle, isSim = false) {
-        this.statusDot.className = `status-indicator-dot ${isSim ? 'simulated' : 'connected'}`;
-        this.statusLabel.textContent = isSim ? 'SIMULATED' : 'CONNECTED';
+    updateConnectedUI(name, subtitle) {
+        this.statusDot.className = 'status-indicator-dot connected';
+        this.statusLabel.textContent = 'CONNECTED';
         this.deviceNameBadge.textContent = name;
         this.btnConnect.classList.add('hidden');
-        this.btnSimulate.classList.add('hidden');
         this.btnDisconnect.classList.remove('hidden');
     }
 
     async syncHardwareState() {
         this.updateFeaturesTable();
 
+        // 1. Check DPI Feature (0x2201)
         const dpiIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ADJUSTABLE_DPI);
         if (dpiIdx) {
-            this.dpiFeatureBadge.textContent = `Runtime Idx: 0x${dpiIdx.toString(16).padStart(2, '0')} (Active)`;
+            this.dpiFeatureBadge.textContent = `0x2201 Active (Idx 0x${dpiIdx.toString(16).padStart(2, '0')})`;
             this.dpiFeatureBadge.classList.add('badge-success');
             try {
                 const dpiData = await this.device.getDpi();
-                this.setDpiState(dpiData.dpi, true);
-                this.showToast(`Hardware DPI Read: ${dpiData.dpi} DPI`, 'info');
-            } catch (e) {
-                console.warn('Could not read hardware DPI:', e);
+                this.dpiStages[this.activeStageIndex] = dpiData.dpi;
+                this.updateActiveDpiDisplay(dpiData.dpi);
+                this.renderDpiStages();
+            } catch (e) {}
+        }
+
+        // 2. Query Battery Status (0x1004 / 0x1000)
+        await this.refreshBatteryStatus();
+
+        // 3. Query Active Profile Slot (0x8100)
+        const profilesIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (profilesIdx) {
+            try {
+                const activeSlot = await this.device.getActiveProfile();
+                if (activeSlot >= 1 && activeSlot <= 5) {
+                    this.selectProfileSlot(activeSlot);
+                }
+                const mode = await this.device.getOnboardMode();
+                this.onboardMode = (mode === 1);
+                this.chkOnboardMode.checked = this.onboardMode;
+                this.onboardModeBadge.textContent = this.onboardMode ? 'Onboard Mode Active' : 'Software/Host Mode';
+            } catch (e) {}
+        }
+
+        // 4. Query Button Remappings (0x8110)
+        const spyIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
+        if (spyIdx) {
+            try {
+                const remappings = await this.device.getButtonRemappings();
+                if (remappings && remappings.length >= 11) {
+                    // Sync physical buttons
+                    for (let i = 0; i < 11; i++) {
+                        const val = remappings[i];
+                        if (val > 0) {
+                            this.physicalButtons[i].defaultAction = {
+                                behavior: 0x80,
+                                type: 'mouse',
+                                value: val,
+                                label: `Assigned (0x0${val.toString(16)})`
+                            };
+                        }
+                    }
+                    this.renderPhysicalButtons();
+                }
+            } catch (e) {}
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * Battery Telemetry
+     * ------------------------------------------------------------- */
+    async refreshBatteryStatus() {
+        if (!this.device.isConnected) return;
+        try {
+            const b = await this.device.getBatteryStatus();
+            this.updateBatteryUI(b);
+        } catch (e) {}
+    }
+
+    updateBatteryUI(b) {
+        if (!b.isSupported) {
+            this.batteryPill.classList.add('hidden');
+            return;
+        }
+
+        this.batteryInfo = b;
+        this.batteryPill.classList.remove('hidden');
+        this.batteryText.textContent = `${b.percent}%`;
+        this.batteryFillLevel.style.width = `${Math.min(100, Math.max(5, b.percent))}%`;
+
+        if (b.isCharging) {
+            this.chargingIndicator.classList.remove('hidden');
+        } else {
+            this.chargingIndicator.classList.add('hidden');
+        }
+
+        // Power Tab details
+        this.batteryBigPercent.textContent = `${b.percent}%`;
+        this.batteryStatusSub.textContent = b.isCharging ? 'Charging' : 'Discharging';
+        this.metricChargingState.textContent = b.isCharging ? (b.isWirelessPowerPlay ? 'Wireless (PowerPlay)' : 'Charging via USB') : 'Discharging';
+        this.metricBatteryLevel.textContent = b.level === 8 ? 'Full' : (b.level === 4 ? 'Good' : (b.level === 2 ? 'Low' : 'Critical'));
+        this.metricPowerPlay.textContent = b.isWirelessPowerPlay ? 'Active (Pad Powered)' : 'Inactive';
+    }
+
+    /* -------------------------------------------------------------
+     * Multi-Stage DPI Sensor Management
+     * ------------------------------------------------------------- */
+    renderDpiStages() {
+        this.dpiStageChipsContainer.innerHTML = '';
+        this.dpiStages.forEach((dpi, idx) => {
+            const chip = document.createElement('div');
+            chip.className = `dpi-stage-chip ${idx === this.activeStageIndex ? 'active' : ''} ${idx === this.defaultStageIndex ? 'is-default' : ''} ${idx === this.sniperStageIndex ? 'is-sniper' : ''}`;
+            
+            let tagText = '';
+            if (idx === this.defaultStageIndex && idx === this.sniperStageIndex) tagText = 'Default & Shift';
+            else if (idx === this.defaultStageIndex) tagText = 'Default';
+            else if (idx === this.sniperStageIndex) tagText = 'Shift';
+
+            chip.innerHTML = `
+                <span class="stage-num">STAGE ${idx + 1}</span>
+                <span class="stage-val">${dpi}</span>
+                ${tagText ? `<span class="stage-tag">${tagText}</span>` : ''}
+            `;
+
+            chip.addEventListener('click', async () => {
+                this.activeStageIndex = idx;
+                this.updateActiveDpiDisplay(dpi);
+                this.renderDpiStages();
+                await this.applyDpi(dpi);
+            });
+
+            this.dpiStageChipsContainer.appendChild(chip);
+        });
+    }
+
+    addDpiStage() {
+        if (this.dpiStages.length >= 5) {
+            this.showToast('Maximum 5 DPI stages supported', 'error');
+            return;
+        }
+        const lastVal = this.dpiStages[this.dpiStages.length - 1];
+        const nextVal = Math.min(25600, lastVal + 800);
+        this.dpiStages.push(nextVal);
+        this.activeStageIndex = this.dpiStages.length - 1;
+        this.updateActiveDpiDisplay(nextVal);
+        this.renderDpiStages();
+        this.showToast(`Added DPI Stage ${this.dpiStages.length}: ${nextVal} DPI`, 'success');
+    }
+
+    removeDpiStage() {
+        if (this.dpiStages.length <= 1) {
+            this.showToast('Minimum 1 DPI stage required', 'error');
+            return;
+        }
+        this.dpiStages.pop();
+        if (this.activeStageIndex >= this.dpiStages.length) {
+            this.activeStageIndex = this.dpiStages.length - 1;
+        }
+        this.updateActiveDpiDisplay(this.dpiStages[this.activeStageIndex]);
+        this.renderDpiStages();
+        this.showToast(`Removed stage. ${this.dpiStages.length} stages remaining`, 'info');
+    }
+
+    updateActiveDpiDisplay(dpi) {
+        this.dpiDisplayValue.textContent = dpi;
+        this.dpiSlider.value = dpi;
+        this.updateGauge(dpi);
+
+        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ADJUSTABLE_DPI) || 0x07;
+        const dpiHi = (dpi >> 8) & 0xFF;
+        const dpiLo = dpi & 0xFF;
+        this.dpiHexPreview.textContent = `TX 0x10 FF ${featIdx.toString(16).padStart(2, '0').toUpperCase()} 31 00 ${dpiHi.toString(16).padStart(2, '0').toUpperCase()} ${dpiLo.toString(16).padStart(2, '0').toUpperCase()} (Fn 0x03 setSensorDPI)`;
+    }
+
+    updateGauge(dpi) {
+        const minLog = Math.log10(100);
+        const maxLog = Math.log10(25600);
+        const curLog = Math.log10(Math.max(100, Math.min(25600, dpi)));
+        const ratio = (curLog - minLog) / (maxLog - minLog);
+        
+        const circumference = 515.2;
+        const offset = circumference - (ratio * circumference * 0.75);
+        this.gaugeBar.style.strokeDashoffset = offset;
+    }
+
+    async applyDpi(dpi) {
+        if (!this.device.isConnected) return;
+        try {
+            await this.device.setDpi(dpi);
+            this.showToast(`DPI confirmed on hardware: ${dpi}`, 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    async applyPollingRate(rate) {
+        this.currentRate = rate;
+        this.rateCards.forEach(card => {
+            if (parseInt(card.dataset.rate, 10) === rate) card.classList.add('active');
+            else card.classList.remove('active');
+        });
+        this.pollingBadge.textContent = `${rate} Hz`;
+
+        if (!this.device.isConnected) return;
+        try {
+            await this.device.setReportRate(rate);
+            this.showToast(`Report rate changed to ${rate} Hz`, 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * Physical Button Remapping & Wire Spy
+     * ------------------------------------------------------------- */
+    renderPhysicalButtons() {
+        this.physicalButtonList.innerHTML = '';
+        this.physicalButtons.forEach(btn => {
+            const item = document.createElement('div');
+            item.className = `btn-remap-item ${btn.id === this.selectedButtonId ? 'active' : ''}`;
+            item.id = `btn-remap-${btn.id}`;
+            item.innerHTML = `
+                <span class="btn-remap-name">${btn.name}</span>
+                <span class="btn-remap-action-badge">${btn.defaultAction.label}</span>
+            `;
+
+            item.addEventListener('click', () => {
+                this.selectedButtonId = btn.id;
+                this.selectedButtonTitle.textContent = `${btn.name} Assignment`;
+                this.selectedButtonBadge.textContent = btn.defaultAction.label;
+                this.renderPhysicalButtons();
+            });
+
+            this.physicalButtonList.appendChild(item);
+        });
+    }
+
+    handleButtonSpyEvent(evt) {
+        const rawStatus = evt.rawStatus;
+        this.testerDisplay.textContent = `Raw Status: 0x${rawStatus.toString(16).padStart(4, '0').toUpperCase()} (${evt.data.map(b => b.toString(16).padStart(2,'0')).join(' ')})`;
+
+        for (let i = 0; i < 16; i++) {
+            const isDown = ((rawStatus >> i) & 1) === 1;
+            const btnEl = document.getElementById(`btn-remap-${i + 1}`);
+            if (btnEl) {
+                if (isDown) btnEl.classList.add('testing');
+                else btnEl.classList.remove('testing');
             }
         }
     }
 
+    updateKeystrokeDisplay() {
+        let text = '';
+        if (this.modCtrl.checked) text += 'Ctrl + ';
+        if (this.modShift.checked) text += 'Shift + ';
+        if (this.modAlt.checked) text += 'Alt + ';
+        if (this.modWin.checked) text += 'Win + ';
+        text += this.recordedKey ? this.recordedKey.key : 'None';
+        this.keystrokeInput.value = this.recordedKey ? this.recordedKey.key : '';
+        this.keystrokePreviewText.textContent = `Assigned: ${text}`;
+    }
+
+    applyActionAssignment() {
+        const activeCatTab = document.querySelector('.action-cat-tab.active');
+        const cat = activeCatTab ? activeCatTab.dataset.cat : 'mouse';
+        const targetBtn = this.physicalButtons.find(b => b.id === this.selectedButtonId);
+        if (!targetBtn) return;
+
+        let actionObj = null;
+
+        if (cat === 'keystroke') {
+            if (!this.recordedKey) {
+                this.showToast('Please press a keyboard key first', 'error');
+                return;
+            }
+            let label = '';
+            if (this.modCtrl.checked) label += 'Ctrl+';
+            if (this.modShift.checked) label += 'Shift+';
+            if (this.modAlt.checked) label += 'Alt+';
+            if (this.modWin.checked) label += 'Win+';
+            label += this.recordedKey.key;
+            actionObj = { behavior: 0x80, type: 'key', value: this.recordedKey.code, label };
+        } else {
+            const activeOpt = document.querySelector('.action-pane.active .opt-btn.active');
+            if (activeOpt) {
+                actionObj = {
+                    behavior: activeOpt.dataset.action === 'mouse' ? 0x80 : 0x90,
+                    type: activeOpt.dataset.action,
+                    value: parseInt(activeOpt.dataset.val, 10),
+                    label: activeOpt.textContent.trim()
+                };
+            }
+        }
+
+        if (actionObj) {
+            targetBtn.defaultAction = actionObj;
+            this.selectedButtonBadge.textContent = actionObj.label;
+            this.renderPhysicalButtons();
+            this.showToast(`Assigned "${actionObj.label}" to ${targetBtn.name}`, 'success');
+        }
+    }
+
+    async commitAllRemappings() {
+        if (!this.device.isConnected) {
+            this.showToast('Connect peripheral to commit remappings to hardware', 'error');
+            return;
+        }
+
+        // Prepare 16-element remapping array
+        const mapArray = new Array(16).fill(0);
+        for (let i = 0; i < this.physicalButtons.length && i < 16; i++) {
+            const act = this.physicalButtons[i].defaultAction;
+            mapArray[i] = act.value || (i + 1);
+        }
+
+        try {
+            await this.device.setButtonRemappings(mapArray);
+            await this.device.commitProfileToFlash(this.currentSlot);
+            this.showToast('Remappings committed to onboard EEPROM flash!', 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * Profiles Management
+     * ------------------------------------------------------------- */
+    selectProfileSlot(slot) {
+        this.currentSlot = slot;
+        this.slotTabs.forEach(t => {
+            if (parseInt(t.dataset.slot, 10) === slot) t.classList.add('active');
+            else t.classList.remove('active');
+        });
+
+        this.sectorAddr.textContent = `0x000${slot}`;
+        this.activeProfileBadge.textContent = `Slot #${slot} Active`;
+        this.profileNameInput.value = this.profileNames[slot] || `Profile ${slot}`;
+    }
+
+    async applyActiveProfile(slot) {
+        if (!this.device.isConnected) {
+            this.showToast(`Slot #${slot} selected`, 'info');
+            return;
+        }
+        try {
+            await this.device.setActiveProfile(slot);
+            this.selectProfileSlot(slot);
+            this.showToast(`Hardware profile switched to Slot #${slot}`, 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    async applyCommitFlash(slot) {
+        if (!this.device.isConnected) {
+            this.showToast('Connect device first', 'error');
+            return;
+        }
+        try {
+            await this.device.commitProfileToFlash(slot);
+            this.showToast(`Profile #${slot} successfully written to EEPROM flash!`, 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * LIGHTSYNC RGB Studio
+     * ------------------------------------------------------------- */
+    setColor(hex) {
+        this.currentColor = hex;
+        this.rgbColorInput.value = hex;
+        this.colorHexText.textContent = hex.toUpperCase();
+        this.rgbGlowDemo.style.background = hex;
+        this.rgbGlowDemo.style.boxShadow = `0 0 20px ${hex}`;
+        this.rgbStatusLabel.textContent = `Active: ${hex.toUpperCase()}`;
+    }
+
+    async applyLighting() {
+        const hex = this.currentColor.replace('#', '');
+        const r = parseInt(hex.substring(0, 2), 16) || 0;
+        const g = parseInt(hex.substring(2, 4), 16) || 0;
+        const b = parseInt(hex.substring(4, 6), 16) || 0;
+
+        if (!this.device.isConnected) {
+            this.showToast(`RGB Color Applied: RGB(${r},${g},${b}) (Offline)`, 'info');
+            return;
+        }
+
+        try {
+            await this.device.setLightingEffect(this.currentZone, this.currentMode, r, g, b);
+            // Sync secondary zone
+            const otherZone = this.currentZone === 0 ? 1 : 0;
+            try { await this.device.setLightingEffect(otherZone, this.currentMode, r, g, b); } catch (e) {}
+            this.showToast(`Lighting applied & saved to NV Flash (${this.currentColor.toUpperCase()})`, 'success');
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    /* -------------------------------------------------------------
+     * Telemetry & Packet Logger
+     * ------------------------------------------------------------- */
     async refreshDiscovery() {
         if (!this.device.isConnected) {
-            this.showToast('Connect device or simulate first.', 'error');
+            this.showToast('Connect device first', 'error');
             return;
         }
-
-        if (this.isSimulated) {
-            this.emitSimulatedDiscoveryPackets();
-            this.showToast('Discovered 8 HID++ 2.0 features (Simulated)', 'success');
-            return;
-        }
-
-        this.showToast('Probing IRoot (0x0000)...');
+        this.showToast('Probing IRoot (0x0000)...', 'info');
         await this.device.discoverFeatures();
         this.updateFeaturesTable();
         this.showToast('Feature Discovery completed', 'success');
@@ -312,8 +863,6 @@ class AppController {
 
     updateFeaturesTable() {
         this.featuresTableBody.innerHTML = '';
-        
-        // Root feature is always row 0
         const rows = [
             { id: 0x0000, name: 'IRoot (Discovery)', idx: '0x00', type: 'Core', status: 'Permanent' }
         ];
@@ -341,254 +890,9 @@ class AppController {
         }
     }
 
-    emitSimulatedDiscoveryPackets() {
-        const simulatedFeatures = [
-            { id: 0x0001, idx: 0x01, name: 'IFeatureSet' },
-            { id: 0x0003, idx: 0x02, name: 'IDeviceInfo' },
-            { id: 0x2201, idx: 0x07, name: 'AdjustableDPI' },
-            { id: 0x8061, idx: 0x09, name: 'ReportRate' },
-            { id: 0x8070, idx: 0x0D, name: 'ColorLED_RGB' },
-            { id: 0x8100, idx: 0x0B, name: 'OnboardProfiles' }
-        ];
-
-        let sw = 1;
-        for (const feat of simulatedFeatures) {
-            const hi = (feat.id >> 8) & 0xFF;
-            const lo = feat.id & 0xFF;
-            // TX probe
-            this.device.emitPacket('TX', 0x10, 0xFF, 0x00, 0x0, sw, [0x10, 0xFF, 0x00, sw, hi, lo, 0x00], `Query Root for 0x${feat.id.toString(16)}`);
-            // RX answer
-            this.device.emitPacket('RX', 0x10, 0xFF, 0x00, 0x0, sw, [0x10, 0xFF, 0x00, sw, feat.idx, 0x00, 0x01], `Resolved ${feat.name} to Idx 0x0${feat.idx.toString(16)}`);
-            sw++;
-        }
-    }
-
-    /* -------------------------------------------------------------
-     * DPI Sensor Controls
-     * ------------------------------------------------------------- */
-
-    setDpiState(dpi, updateSlider = false) {
-        this.currentDpi = dpi;
-        this.dpiDisplayValue.textContent = dpi;
-        this.updateGauge(dpi);
-
-        if (updateSlider) {
-            this.dpiSlider.value = dpi;
-        }
-
-        // Update active preset chip
-        this.presetChips.forEach(chip => {
-            if (parseInt(chip.dataset.dpi, 10) === dpi) {
-                chip.classList.add('active');
-            } else {
-                chip.classList.remove('active');
-            }
-        });
-
-        // Update hex command preview
-        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ADJUSTABLE_DPI) || 0x07;
-        const dpiHi = (dpi >> 8) & 0xFF;
-        const dpiLo = dpi & 0xFF;
-        this.dpiHexPreview.textContent = `TX 0x10 FF ${featIdx.toString(16).padStart(2, '0').toUpperCase()} 31 00 ${dpiHi.toString(16).padStart(2, '0').toUpperCase()} ${dpiLo.toString(16).padStart(2, '0').toUpperCase()} (Fn 0x03 setSensorDPI)`;
-    }
-
-    updateGauge(dpi) {
-        // Map 100 to 25600 DPI to dashoffset (circumference = 515.2)
-        // Logarithmic feel for gaming DPI
-        const minLog = Math.log10(100);
-        const maxLog = Math.log10(25600);
-        const curLog = Math.log10(Math.max(100, Math.min(25600, dpi)));
-        const ratio = (curLog - minLog) / (maxLog - minLog);
-        
-        const circumference = 515.2;
-        const offset = circumference - (ratio * circumference * 0.75); // 270 deg sweep
-        this.gaugeBar.style.strokeDashoffset = offset;
-    }
-
-    async applyDpi(dpi) {
-        if (!this.device.isConnected) {
-            this.showToast(`Set DPI to ${dpi} (Offline)`, 'info');
-            return;
-        }
-
-        try {
-            if (this.isSimulated) {
-                const featIdx = 0x07;
-                const dpiHi = (dpi >> 8) & 0xFF;
-                const dpiLo = dpi & 0xFF;
-                this.device.emitPacket('TX', 0x10, 0xFF, featIdx, 0x03, 0x01, [0x10, 0xFF, featIdx, 0x31, 0x00, dpiHi, dpiLo], `Set Sensor DPI to ${dpi}`);
-                this.device.emitPacket('RX', 0x10, 0xFF, featIdx, 0x03, 0x01, [0x10, 0xFF, featIdx, 0x31, 0x00, dpiHi, dpiLo], `Sensor Confirmed ${dpi} DPI`);
-                this.showToast(`DPI set to ${dpi} (Simulated)`, 'success');
-            } else {
-                await this.device.setDpi(dpi);
-                this.showToast(`DPI confirmed on hardware: ${dpi}`, 'success');
-            }
-        } catch (err) {
-            console.error(err);
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    /* -------------------------------------------------------------
-     * Report Rate / Polling Rate
-     * ------------------------------------------------------------- */
-
-    async applyPollingRate(rate) {
-        this.currentRate = rate;
-        this.rateCards.forEach(card => {
-            if (parseInt(card.dataset.rate, 10) === rate) {
-                card.classList.add('active');
-            } else {
-                card.classList.remove('active');
-            }
-        });
-
-        this.pollingBadge.textContent = `${rate} Hz`;
-
-        if (!this.device.isConnected) {
-            this.showToast(`Polling Rate set to ${rate} Hz (Offline)`, 'info');
-            return;
-        }
-
-        const rateMasks = { 1000: 0x01, 500: 0x02, 250: 0x04, 125: 0x08 };
-        const mask = rateMasks[rate] || 0x01;
-        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE) || 0x09;
-
-        try {
-            if (this.isSimulated) {
-                this.device.emitPacket('TX', 0x10, 0xFF, featIdx, 0x01, 0x01, [0x10, 0xFF, featIdx, 0x11, mask, 0x00, 0x00], `Set Report Rate to ${rate} Hz (Mask: 0x0${mask.toString(16)})`);
-                this.device.emitPacket('RX', 0x10, 0xFF, featIdx, 0x01, 0x01, [0x10, 0xFF, featIdx, 0x11, mask, 0x00, 0x00], `Hardware Report Rate Updated`);
-                this.showToast(`Polling rate switched to ${rate} Hz (Simulated)`, 'success');
-            } else {
-                await this.device.setReportRate(rate);
-                this.showToast(`Report rate changed to ${rate} Hz`, 'success');
-            }
-        } catch (err) {
-            console.error(err);
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    /* -------------------------------------------------------------
-     * Onboard Profiles (0x8100)
-     * ------------------------------------------------------------- */
-
-    selectProfileSlot(slot) {
-        this.currentSlot = slot;
-        this.slotTabs.forEach(t => {
-            if (parseInt(t.dataset.slot, 10) === slot) {
-                t.classList.add('active');
-            } else {
-                t.classList.remove('active');
-            }
-        });
-
-        this.sectorAddr.textContent = `0x000${slot}`;
-        this.activeProfileBadge.textContent = `Slot #${slot} Selected`;
-    }
-
-    async applyActiveProfile(slot) {
-        if (!this.device.isConnected) {
-            this.showToast(`Slot #${slot} activated (Offline)`, 'info');
-            return;
-        }
-
-        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES) || 0x0B;
-
-        try {
-            if (this.isSimulated) {
-                this.device.emitPacket('TX', 0x10, 0xFF, featIdx, 0x03, 0x01, [0x10, 0xFF, featIdx, 0x31, 0x00, slot, 0x00], `Switch Active Profile Slot to #${slot}`);
-                this.device.emitPacket('RX', 0x10, 0xFF, featIdx, 0x03, 0x01, [0x10, 0xFF, featIdx, 0x31, 0x00, 0x00, 0x00], `Active Sector Loaded`);
-                this.activeProfileBadge.textContent = `Slot #${slot} Active`;
-                this.showToast(`Active Profile Slot switched to #${slot} (Simulated)`, 'success');
-            } else {
-                await this.device.setActiveProfile(slot);
-                this.activeProfileBadge.textContent = `Slot #${slot} Active`;
-                this.showToast(`Active profile changed to Slot #${slot}`, 'success');
-            }
-        } catch (err) {
-            console.error(err);
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    async applyCommitFlash(slot) {
-        if (!this.device.isConnected) {
-            this.showToast('Device not connected', 'error');
-            return;
-        }
-
-        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES) || 0x0B;
-
-        try {
-            if (this.isSimulated) {
-                this.device.emitPacket('TX', 0x10, 0xFF, featIdx, 0x0C, 0x01, [0x10, 0xFF, featIdx, 0xC1, 0x00, slot, 0x00], `Commit Slot #${slot} to Non-Volatile Flash`);
-                this.device.emitPacket('RX', 0x10, 0xFF, featIdx, 0x0C, 0x01, [0x10, 0xFF, featIdx, 0xC1, 0x00, 0x00, 0x00], `Sector Flash Commit Success`);
-                this.showToast(`Profile #${slot} committed to Flash EEPROM (Simulated)`, 'success');
-            } else {
-                await this.device.commitProfileToFlash(slot);
-                this.showToast(`Profile #${slot} committed to onboard memory!`, 'success');
-            }
-        } catch (err) {
-            console.error(err);
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    /* -------------------------------------------------------------
-     * LIGHTSYNC RGB (0x8070)
-     * ------------------------------------------------------------- */
-
-    setColor(hex) {
-        this.currentColor = hex;
-        this.rgbColorInput.value = hex;
-        this.colorHexText.textContent = hex.toUpperCase();
-    }
-
-    async applyLighting() {
-        const hex = this.currentColor.replace('#', '');
-        const r = parseInt(hex.substring(0, 2), 16) || 0;
-        const g = parseInt(hex.substring(2, 4), 16) || 0;
-        const b = parseInt(hex.substring(4, 6), 16) || 0;
-
-        if (!this.device.isConnected) {
-            this.showToast(`RGB Color Applied: RGB(${r},${g},${b}) (Offline)`, 'info');
-            return;
-        }
-
-        const featIdx = this.device.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED) || 0x0D;
-
-        try {
-            if (this.isSimulated) {
-                const pkt = [0x11, 0xFF, featIdx, 0x31, this.currentZone, this.currentMode, r, g, b, 0x00, 0x64];
-                this.device.emitPacket('TX', 0x11, 0xFF, featIdx, 0x03, 0x01, pkt, `Set Zone ${this.currentZone} RGB(${r},${g},${b}) Mode ${this.currentMode}`);
-                this.device.emitPacket('RX', 0x11, 0xFF, featIdx, 0x03, 0x01, [0x11, 0xFF, featIdx, 0x31, 0x00, 0x00, 0x00], `Lighting Zone Acknowledged`);
-                this.showToast(`RGB Packet Dispatched: Zone ${this.currentZone}`, 'success');
-            } else {
-                await this.device.setLightingEffect(this.currentZone, this.currentMode, r, g, b);
-                // Also update other zone so entire mouse glows in sync
-                const otherZone = this.currentZone === 0 ? 1 : 0;
-                try {
-                    await this.device.setLightingEffect(otherZone, this.currentMode, r, g, b);
-                } catch (e) {}
-                this.showToast(`Lighting applied & saved to NV Flash (${this.currentColor.toUpperCase()})`, 'success');
-            }
-        } catch (err) {
-            console.error(err);
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    /* -------------------------------------------------------------
-     * Live Wire Sniffer / Telemetry Feed
-     * ------------------------------------------------------------- */
-
     handlePacketLogged(pkt) {
         this.packetHistory.push(pkt);
-        if (this.packetHistory.length > this.maxPackets) {
-            this.packetHistory.shift();
-        }
-
+        if (this.packetHistory.length > this.maxPackets) this.packetHistory.shift();
         this.packetCountBadge.textContent = `${this.packetHistory.length} Packets`;
 
         if (this.isPaused) return;
@@ -605,8 +909,6 @@ class AppController {
         `;
 
         this.packetStreamFeed.appendChild(row);
-
-        // Keep scroll down
         this.packetStreamFeed.scrollTop = this.packetStreamFeed.scrollHeight;
     }
 
@@ -621,10 +923,6 @@ class AppController {
         URL.revokeObjectURL(url);
         this.showToast('Packet capture exported to JSON', 'success');
     }
-
-    /* -------------------------------------------------------------
-     * Toast Notifications
-     * ------------------------------------------------------------- */
 
     showToast(message, type = 'info') {
         const toast = document.createElement('div');
@@ -651,7 +949,6 @@ class AppController {
     }
 }
 
-// Bootstrap on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new AppController();
 });

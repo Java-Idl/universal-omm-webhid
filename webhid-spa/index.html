@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logitech HID++ 2.0 WebHID Lab | Hardware Control & Wire Inspector</title>
-    <meta name="description" content="In-browser WebHID engineering console for Logitech G-series peripherals. Control DPI, polling rate, onboard memory profiles, RGB lighting, and inspect live HID++ 2.0 wire frames.">
+    <title>Universal OMM — Logitech HID++ 2.0 WebHID Manager</title>
+    <meta name="description" content="Zero-install, browser-native Onboard Memory Manager (OMM) for Logitech G-series gaming mice and peripherals via the WebHID API. Full DPI, button remapping, profiles, battery telemetry, and RGB lighting.">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +18,43 @@
     <div class="ambient-glow glow-cyan"></div>
     <div class="ambient-glow glow-purple"></div>
 
+    <!-- Browser Incompatibility Warning Modal (Auto-shown if not WebHID supported) -->
+    <div id="browserWarningModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-icon-group">
+                <div class="modal-icon warning-pulse">
+                    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#ffab00" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
+            </div>
+            <h2 class="modal-title">Unsupported Browser Detected</h2>
+            <p class="modal-desc" id="browserWarningText">
+                Your current browser (<strong id="detectedBrowserName">Unknown</strong>) does not support the native <strong>WebHID API</strong> required to communicate with Logitech USB peripherals.
+            </p>
+            <div class="modal-info-box">
+                <span class="info-label">Why is WebHID needed?</span>
+                <p>
+                    Unlike ordinary websites, Universal OMM communicates directly with hardware EEPROM registers and sensor chips using raw USB Interrupt reports without background drivers or desktop software. WebHID is a W3C standard currently implemented exclusively by Chromium browsers.
+                </p>
+            </div>
+            <div class="modal-recommendation">
+                <span class="rec-title">Please open this page in a supported browser:</span>
+                <div class="browser-chips">
+                    <span class="browser-chip"><span class="b-dot b-chrome"></span> Google Chrome (Desktop)</span>
+                    <span class="browser-chip"><span class="b-dot b-edge"></span> Microsoft Edge (Desktop)</span>
+                    <span class="browser-chip"><span class="b-dot b-brave"></span> Brave Browser</span>
+                    <span class="browser-chip"><span class="b-dot b-opera"></span> Opera / Opera GX</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="btnDismissWarning" class="btn btn-secondary btn-small">Proceed in View-Only Mode</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
@@ -29,28 +66,38 @@
                     </svg>
                 </div>
                 <div class="brand-text">
-                    <h1 class="brand-title">LOGITECH <span class="highlight-cyan">HID++ 2.0</span> PROTOCOL LAB</h1>
-                    <p class="brand-subtitle">WebHID Low-Level Interoperability & Peripheral Telemetry Engine</p>
+                    <h1 class="brand-title">UNIVERSAL <span class="highlight-cyan">OMM</span> WEB</h1>
+                    <p class="brand-subtitle">Logitech HID++ 2.0 / 4.x Browser-Native Onboard Memory Manager</p>
                 </div>
             </div>
 
             <div class="header-controls">
+                <!-- Battery Level Badge -->
+                <div class="battery-pill hidden" id="batteryPill" title="Device Battery Level">
+                    <div class="battery-icon-wrapper" id="batteryIconWrapper">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
+                            <line x1="20" y1="11" x2="20" y2="13"/>
+                        </svg>
+                        <div class="battery-fill-level" id="batteryFillLevel" style="width: 80%;"></div>
+                    </div>
+                    <span class="battery-text" id="batteryText">80%</span>
+                    <span class="battery-charging-indicator hidden" id="chargingIndicator">⚡</span>
+                </div>
+
+                <!-- Device Status Badge -->
                 <div class="device-pill" id="deviceStatusPill">
                     <span class="status-indicator-dot" id="statusDot"></span>
                     <div class="status-text-group">
                         <span class="status-label" id="statusLabel">DISCONNECTED</span>
-                        <span class="device-name-badge" id="deviceNameBadge">No Hardware Bound</span>
+                        <span class="device-name-badge" id="deviceNameBadge">No Hardware Connected</span>
                     </div>
                 </div>
 
                 <div class="btn-group">
                     <button id="btnConnect" class="btn btn-primary">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                        Connect WebHID
-                    </button>
-                    <button id="btnSimulate" class="btn btn-secondary">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        Simulate G502 HERO
+                        Connect Peripheral
                     </button>
                     <button id="btnDisconnect" class="btn btn-danger hidden">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -60,116 +107,309 @@
             </div>
         </header>
 
-        <!-- Main Dashboard Grid -->
-        <main class="dashboard-grid">
-            <!-- Left Column: Controls & Features -->
-            <section class="controls-column">
-                
-                <!-- Card 1: DPI Sensor Engine -->
-                <div class="card glass-card">
-                    <div class="card-header">
-                        <div class="card-title-group">
-                            <span class="feature-tag">0x2201</span>
-                            <h2>HERO Optical Sensor & DPI Control</h2>
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs-bar">
+            <button class="nav-tab active" data-tab="sensor">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                Sensor & DPI
+            </button>
+            <button class="nav-tab" data-tab="buttons">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="15" x2="8" y2="17"/><line x1="16" y1="15" x2="16" y2="17"/></svg>
+                Buttons & Remapping
+            </button>
+            <button class="nav-tab" data-tab="profiles">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Onboard Profiles
+            </button>
+            <button class="nav-tab" data-tab="lighting">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                LIGHTSYNC RGB
+            </button>
+            <button class="nav-tab" data-tab="power">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Power & Performance
+            </button>
+            <button class="nav-tab" data-tab="sniffer">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                Wire Bus Sniffer
+            </button>
+        </nav>
+
+        <!-- Tab Contents -->
+        <main class="tab-content-area">
+            
+            <!-- TAB 1: SENSOR & DPI -->
+            <section id="tab-sensor" class="tab-pane active">
+                <div class="content-grid-two-col">
+                    <!-- Left: DPI Gauge & Slider -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x2201</span>
+                                <h2>HERO Sensor DPI Sensitivity</h2>
+                            </div>
+                            <span class="card-badge" id="dpiFeatureBadge">Awaiting Connection</span>
                         </div>
-                        <span class="card-badge" id="dpiFeatureBadge">Awaiting Sync</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="dpi-visualizer-container">
-                            <!-- Circular Arc Gauge / Visualizer -->
-                            <div class="dpi-gauge">
-                                <svg class="gauge-svg" viewBox="0 0 200 200">
-                                    <circle class="gauge-bg" cx="100" cy="100" r="82" />
-                                    <circle class="gauge-bar" id="gaugeBar" cx="100" cy="100" r="82" />
-                                </svg>
-                                <div class="gauge-center-content">
-                                    <div class="dpi-value" id="dpiDisplayValue">1600</div>
-                                    <div class="dpi-unit">DPI SENSITIVITY</div>
-                                    <div class="dpi-step-note">STEP: 50 DPI</div>
+                        <div class="card-body">
+                            <!-- Circular Arc Gauge -->
+                            <div class="dpi-visualizer-container">
+                                <div class="dpi-gauge">
+                                    <svg class="gauge-svg" viewBox="0 0 200 200">
+                                        <circle class="gauge-bg" cx="100" cy="100" r="82" />
+                                        <circle class="gauge-bar" id="gaugeBar" cx="100" cy="100" r="82" />
+                                    </svg>
+                                    <div class="gauge-center-content">
+                                        <div class="dpi-value" id="dpiDisplayValue">1600</div>
+                                        <div class="dpi-unit">ACTIVE DPI</div>
+                                        <div class="dpi-step-note">STEP: 50 DPI</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="slider-wrapper">
+                                    <div class="slider-labels">
+                                        <span>100 DPI</span>
+                                        <span>12,800 DPI</span>
+                                        <span>25,600 DPI</span>
+                                    </div>
+                                    <input type="range" id="dpiSlider" min="100" max="25600" step="50" value="1600" class="neon-slider" />
                                 </div>
                             </div>
+
+                            <!-- Multi-Stage DPI Slots (OMM Feature) -->
+                            <div class="dpi-stages-section">
+                                <div class="section-title-row">
+                                    <span class="sub-label">DPI Stages (1 – 5 Levels)</span>
+                                    <div class="stage-btns">
+                                        <button class="btn btn-xs btn-outline" id="btnAddDpiStage">+ Add Stage</button>
+                                        <button class="btn btn-xs btn-outline" id="btnRemoveDpiStage">- Remove Stage</button>
+                                    </div>
+                                </div>
+                                <div class="dpi-stage-chips-container" id="dpiStageChipsContainer">
+                                    <!-- Rendered dynamically -->
+                                </div>
+                                <div class="stage-actions-row">
+                                    <button class="btn btn-xs btn-secondary" id="btnSetDefaultDpi">Set Selected as Default DPI</button>
+                                    <button class="btn btn-xs btn-accent" id="btnSetSniperDpi">Set as DPI Shift (Sniper)</button>
+                                </div>
+                            </div>
+
+                            <div class="command-preview-box">
+                                <span class="preview-title">Wire Command Dispatch Preview:</span>
+                                <code class="hex-preview" id="dpiHexPreview">TX 0x10 FF 07 31 00 06 40 (Function 0x03)</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Polling Rate & Sensor Tuning -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x8061</span>
+                                <h2>Report Rate & Performance Tuning</h2>
+                            </div>
+                            <span class="card-badge" id="pollingBadge">1000 Hz</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="section-desc">Configure USB bus polling interval. Higher report rates decrease input latency for competitive gaming.</p>
                             
-                            <!-- Slider and manual adjustment -->
-                            <div class="slider-wrapper">
-                                <div class="slider-labels">
-                                    <span>100 DPI</span>
-                                    <span>12,800 DPI</span>
-                                    <span>25,600 DPI</span>
+                            <div class="rate-selector-grid">
+                                <button class="rate-card" data-rate="125">
+                                    <span class="rate-val">125 Hz</span>
+                                    <span class="rate-desc">8 ms latency</span>
+                                    <span class="rate-tag">Power Saver</span>
+                                </button>
+                                <button class="rate-card" data-rate="250">
+                                    <span class="rate-val">250 Hz</span>
+                                    <span class="rate-desc">4 ms latency</span>
+                                    <span class="rate-tag">Standard</span>
+                                </button>
+                                <button class="rate-card" data-rate="500">
+                                    <span class="rate-val">500 Hz</span>
+                                    <span class="rate-desc">2 ms latency</span>
+                                    <span class="rate-tag">Esports</span>
+                                </button>
+                                <button class="rate-card active" data-rate="1000">
+                                    <span class="rate-val">1000 Hz</span>
+                                    <span class="rate-desc">1 ms latency</span>
+                                    <span class="rate-tag">Tournament</span>
+                                </button>
+                            </div>
+
+                            <!-- Sensor Parameters & Angle Snapping -->
+                            <div class="sensor-tuning-group">
+                                <h3 class="group-title">Hardware Sensor Features</h3>
+                                <div class="tuning-row">
+                                    <div class="tuning-info">
+                                        <span class="tuning-title">Angle Snapping (Prediction)</span>
+                                        <span class="tuning-desc">Artificially straightens horizontal and vertical mouse movements.</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="chkAngleSnapping">
+                                        <span class="slider-toggle"></span>
+                                    </label>
                                 </div>
-                                <input type="range" id="dpiSlider" min="100" max="25600" step="50" value="1600" class="neon-slider" />
-                            </div>
-                        </div>
 
-                        <!-- Quick Presets -->
-                        <div class="preset-section">
-                            <span class="preset-label">Quick Sensor Presets</span>
-                            <div class="preset-chips">
-                                <button class="chip" data-dpi="400">400</button>
-                                <button class="chip" data-dpi="800">800</button>
-                                <button class="chip" data-dpi="1200">1200</button>
-                                <button class="chip active" data-dpi="1600">1600</button>
-                                <button class="chip" data-dpi="2400">2400</button>
-                                <button class="chip" data-dpi="3200">3200</button>
-                                <button class="chip" data-dpi="6400">6400</button>
-                                <button class="chip" data-dpi="16000">16K</button>
+                                <div class="tuning-row">
+                                    <div class="tuning-info">
+                                        <span class="tuning-title">Separate X / Y Axis Sensitivity</span>
+                                        <span class="tuning-desc">Allows independent DPI configuration for horizontal and vertical axis.</span>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="chkSeparateXY">
+                                        <span class="slider-toggle"></span>
+                                    </label>
+                                </div>
                             </div>
-                        </div>
-
-                        <div class="command-preview-box">
-                            <span class="preview-title">Wire Command Dispatch Preview:</span>
-                            <code class="hex-preview" id="dpiHexPreview">TX 0x10 FF 07 31 00 06 40 (Function 0x03)</code>
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <!-- Card 2: Report Rate / Polling Frequency -->
-                <div class="card glass-card">
-                    <div class="card-header">
-                        <div class="card-title-group">
-                            <span class="feature-tag">0x8061</span>
-                            <h2>USB Report Rate (Polling Frequency)</h2>
+            <!-- TAB 2: BUTTON REMAPPING & KEY ASSIGNMENTS -->
+            <section id="tab-buttons" class="tab-pane">
+                <div class="content-grid-two-col">
+                    <!-- Left: Interactive Button List -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x8110</span>
+                                <h2>Physical Button Assignment</h2>
+                            </div>
+                            <span class="card-badge" id="buttonSpyBadge">Spy Inactive</span>
                         </div>
-                        <span class="card-badge" id="pollingBadge">1000 Hz</span>
+                        <div class="card-body">
+                            <p class="section-desc">Select a physical button on your mouse to view and customize its onboard memory action.</p>
+                            
+                            <div class="button-list-grid" id="physicalButtonList">
+                                <!-- Generated dynamically for buttons 1-11 -->
+                            </div>
+
+                            <!-- Live Button Spy Monitor -->
+                            <div class="button-tester-box">
+                                <div class="tester-header">
+                                    <span class="tester-title">Hardware Click Live Tester (0x8110 Wire Spy)</span>
+                                    <button class="btn btn-xs btn-outline" id="btnToggleSpy">Enable Live Spy</button>
+                                </div>
+                                <div class="tester-display" id="testerDisplay">
+                                    <span>Click physical mouse buttons to test response...</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="rate-selector-grid">
-                            <button class="rate-card" data-rate="125" data-mask="0x08">
-                                <span class="rate-val">125 Hz</span>
-                                <span class="rate-desc">8 ms response</span>
-                                <span class="rate-tag">Power Saver</span>
-                            </button>
-                            <button class="rate-card" data-rate="250" data-mask="0x04">
-                                <span class="rate-val">250 Hz</span>
-                                <span class="rate-desc">4 ms response</span>
-                                <span class="rate-tag">Standard</span>
-                            </button>
-                            <button class="rate-card" data-rate="500" data-mask="0x02">
-                                <span class="rate-val">500 Hz</span>
-                                <span class="rate-desc">2 ms response</span>
-                                <span class="rate-tag">Esports</span>
-                            </button>
-                            <button class="rate-card active" data-rate="1000" data-mask="0x01">
-                                <span class="rate-val">1000 Hz</span>
-                                <span class="rate-desc">1 ms response</span>
-                                <span class="rate-tag">Tournament</span>
-                            </button>
+
+                    <!-- Right: Action Configurator Drawer -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">Macro / HID</span>
+                                <h2 id="selectedButtonTitle">Button 1 Assignment</h2>
+                            </div>
+                            <span class="card-badge badge-cyan" id="selectedButtonBadge">Primary Click</span>
+                        </div>
+                        <div class="card-body">
+                            <!-- Category Tabs -->
+                            <div class="action-category-tabs">
+                                <button class="action-cat-tab active" data-cat="mouse">Mouse Clicks</button>
+                                <button class="action-cat-tab" data-cat="keystroke">Keystroke</button>
+                                <button class="action-cat-tab" data-cat="dpi">DPI Controls</button>
+                                <button class="action-cat-tab" data-cat="media">Media Keys</button>
+                                <button class="action-cat-tab" data-cat="profile">Profiles</button>
+                                <button class="action-cat-tab" data-cat="special">Special</button>
+                            </div>
+
+                            <!-- Mouse Click Actions -->
+                            <div class="action-pane active" id="pane-mouse">
+                                <div class="preset-options-grid">
+                                    <button class="opt-btn active" data-action="mouse" data-val="1">Primary Click (Left)</button>
+                                    <button class="opt-btn" data-action="mouse" data-val="2">Secondary Click (Right)</button>
+                                    <button class="opt-btn" data-action="mouse" data-val="4">Middle Click</button>
+                                    <button class="opt-btn" data-action="mouse" data-val="8">Back (Button 4)</button>
+                                    <button class="opt-btn" data-action="mouse" data-val="16">Forward (Button 5)</button>
+                                    <button class="opt-btn" data-action="func" data-val="1">Tilt Left (Horizontal Scroll)</button>
+                                    <button class="opt-btn" data-action="func" data-val="2">Tilt Right (Horizontal Scroll)</button>
+                                </div>
+                            </div>
+
+                            <!-- Keystroke Actions -->
+                            <div class="action-pane" id="pane-keystroke">
+                                <div class="keystroke-recorder-box">
+                                    <label class="form-label">Keyboard Key</label>
+                                    <input type="text" id="keystrokeInput" class="form-input key-recorder-input" placeholder="Press any key (e.g. Space, E, F, 1)..." readonly />
+                                    
+                                    <label class="form-label" style="margin-top:16px;">Modifier Keys</label>
+                                    <div class="modifier-checkboxes">
+                                        <label class="checkbox-label"><input type="checkbox" id="modCtrl"> Ctrl</label>
+                                        <label class="checkbox-label"><input type="checkbox" id="modShift"> Shift</label>
+                                        <label class="checkbox-label"><input type="checkbox" id="modAlt"> Alt</label>
+                                        <label class="checkbox-label"><input type="checkbox" id="modWin"> Windows / Cmd</label>
+                                    </div>
+                                    <div class="keystroke-preview" id="keystrokePreviewText">Assigned: None</div>
+                                </div>
+                            </div>
+
+                            <!-- DPI Control Actions -->
+                            <div class="action-pane" id="pane-dpi">
+                                <div class="preset-options-grid">
+                                    <button class="opt-btn" data-action="func" data-val="7">DPI Shift (Sniper Button)</button>
+                                    <button class="opt-btn" data-action="func" data-val="3">DPI Up (Next DPI Stage)</button>
+                                    <button class="opt-btn" data-action="func" data-val="4">DPI Down (Prev DPI Stage)</button>
+                                    <button class="opt-btn" data-action="func" data-val="5">Cycle DPI Stages</button>
+                                    <button class="opt-btn" data-action="func" data-val="6">Default DPI Stage</button>
+                                </div>
+                            </div>
+
+                            <!-- Media / Consumer Keys -->
+                            <div class="action-pane" id="pane-media">
+                                <div class="preset-options-grid">
+                                    <button class="opt-btn" data-action="consumer" data-val="205">Play / Pause</button>
+                                    <button class="opt-btn" data-action="consumer" data-val="181">Previous Track</button>
+                                    <button class="opt-btn" data-action="consumer" data-val="182">Next Track</button>
+                                    <button class="opt-btn" data-action="consumer" data-val="226">Mute Audio</button>
+                                    <button class="opt-btn" data-action="consumer" data-val="233">Volume Up</button>
+                                    <button class="opt-btn" data-action="consumer" data-val="234">Volume Down</button>
+                                </div>
+                            </div>
+
+                            <!-- Profile Switch Actions -->
+                            <div class="action-pane" id="pane-profile">
+                                <div class="preset-options-grid">
+                                    <button class="opt-btn" data-action="func" data-val="10">Cycle Onboard Profiles</button>
+                                    <button class="opt-btn" data-action="func" data-val="8">Next Profile</button>
+                                    <button class="opt-btn" data-action="func" data-val="9">Previous Profile</button>
+                                </div>
+                            </div>
+
+                            <!-- Special Actions -->
+                            <div class="action-pane" id="pane-special">
+                                <div class="preset-options-grid">
+                                    <button class="opt-btn" data-action="func" data-val="11">G-Shift (Secondary Layer)</button>
+                                    <button class="opt-btn" data-action="func" data-val="12">Battery Life Indicator</button>
+                                    <button class="opt-btn" data-action="disabled" data-val="0">Disable Button</button>
+                                </div>
+                            </div>
+
+                            <div class="action-confirm-row">
+                                <button class="btn btn-primary btn-full" id="btnAssignAction">Apply Assignment to Button</button>
+                                <button class="btn btn-secondary btn-full" id="btnCommitRemappings">Commit Remappings to Flash EEPROM (0x0C)</button>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <!-- Dual Sub-Cards: Profiles & RGB -->
-                <div class="card-grid-split">
-                    <!-- Onboard Profiles (0x8100) -->
+            <!-- TAB 3: ONBOARD MEMORY PROFILES -->
+            <section id="tab-profiles" class="tab-pane">
+                <div class="content-grid-two-col">
                     <div class="card glass-card">
                         <div class="card-header">
                             <div class="card-title-group">
                                 <span class="feature-tag">0x8100</span>
-                                <h2>Onboard Flash Profiles</h2>
+                                <h2>Hardware Flash Profile Directory</h2>
                             </div>
                             <span class="card-badge" id="activeProfileBadge">Slot #1 Active</span>
                         </div>
                         <div class="card-body">
-                            <p class="section-desc">Manage physical non-volatile EEPROM/Flash sector memory slots directly via HID++ 2.0.</p>
+                            <p class="section-desc">Manage physical non-volatile EEPROM/Flash sector memory slots. Settings stored here persist without software.</p>
                             
                             <div class="slot-tabs" id="profileSlotTabs">
                                 <button class="slot-tab active" data-slot="1">
@@ -186,7 +426,7 @@
                                 </button>
                                 <button class="slot-tab" data-slot="4">
                                     <span class="slot-num">4</span>
-                                    <span class="slot-name">CAD / Productivity</span>
+                                    <span class="slot-name">Productivity</span>
                                 </button>
                                 <button class="slot-tab" data-slot="5">
                                     <span class="slot-num">5</span>
@@ -194,53 +434,96 @@
                                 </button>
                             </div>
 
-                            <div class="memory-map-box">
-                                <div class="memory-meta">
-                                    <span>Sector Address: <code id="sectorAddr">0x0001</code></span>
-                                    <span>Block Size: <code>256 Bytes</code></span>
+                            <div class="profile-details-card">
+                                <div class="form-group">
+                                    <label class="form-label">Profile Name</label>
+                                    <input type="text" id="profileNameInput" class="form-input" value="Default / FPS" maxlength="32">
                                 </div>
-                                <div class="profile-actions">
-                                    <button class="btn btn-small btn-secondary" id="btnActivateSlot">
-                                        Switch Active Slot (0x03)
+
+                                <div class="memory-meta">
+                                    <span>EEPROM Sector: <code id="sectorAddr">0x0001</code></span>
+                                    <span>Sector Size: <code>256 Bytes</code></span>
+                                    <span>Slot Status: <span class="badge badge-success">Enabled</span></span>
+                                </div>
+
+                                <div class="profile-actions-flex">
+                                    <button class="btn btn-secondary" id="btnActivateSlot">
+                                        Activate Profile on Device (0x03)
                                     </button>
-                                    <button class="btn btn-small btn-primary" id="btnCommitFlash">
-                                        Commit to Flash (0x0C)
+                                    <button class="btn btn-primary" id="btnCommitFlash">
+                                        Commit Changes to Flash EEPROM (0x0C)
                                     </button>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- LIGHTSYNC RGB (0x8070) -->
+                    <!-- Onboard Mode Control & Memory Map -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x8100 Mode</span>
+                                <h2>Onboard Memory Mode Status</h2>
+                            </div>
+                            <span class="card-badge badge-success" id="onboardModeBadge">Onboard Mode Active</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="mode-toggle-box">
+                                <div class="mode-info">
+                                    <span class="mode-title">Onboard Memory Mode</span>
+                                    <p class="mode-desc">When enabled, the mouse uses exclusively the settings and button macros stored inside its internal flash memory.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="chkOnboardMode" checked>
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+
+                            <div class="info-callout">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                <div>
+                                    <strong>True Zero-Install Hardware Execution</strong>
+                                    <p>Settings committed via Function 0x0C are stored in non-volatile flash. Your DPI, polling rate, buttons, and RGB colors stay active on any PC, Mac, Linux, or gaming console without needing software.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: LIGHTSYNC RGB -->
+            <section id="tab-lighting" class="tab-pane">
+                <div class="content-grid-two-col">
                     <div class="card glass-card">
                         <div class="card-header">
                             <div class="card-title-group">
                                 <span class="feature-tag">0x8070</span>
-                                <h2>LIGHTSYNC RGB Studio</h2>
+                                <h2>LIGHTSYNC RGB Lighting Studio</h2>
                             </div>
                             <span class="card-badge" id="rgbBadge">Zone 0 & 1</span>
                         </div>
                         <div class="card-body">
                             <div class="rgb-controls">
                                 <div class="rgb-zone-select">
-                                    <label class="form-label">Zone</label>
+                                    <label class="form-label">Lighting Zone</label>
                                     <div class="zone-pills">
-                                        <button class="zone-pill active" data-zone="0">Primary Logo</button>
-                                        <button class="zone-pill" data-zone="1">DPI LED Cluster</button>
+                                        <button class="zone-pill active" data-zone="0">Primary Logo (Zone 0)</button>
+                                        <button class="zone-pill" data-zone="1">DPI Indicator (Zone 1)</button>
                                     </div>
                                 </div>
 
                                 <div class="rgb-mode-select">
                                     <label class="form-label">Effect Mode</label>
                                     <div class="mode-pills">
-                                        <button class="mode-pill active" data-mode="1">Static</button>
+                                        <button class="mode-pill active" data-mode="1">Static Color</button>
                                         <button class="mode-pill" data-mode="2">Breathing</button>
                                         <button class="mode-pill" data-mode="3">Color Cycle</button>
+                                        <button class="mode-pill" data-mode="0">Off (Disable)</button>
                                     </div>
                                 </div>
 
                                 <div class="rgb-color-picker-row">
-                                    <label class="form-label">Color</label>
+                                    <label class="form-label">Color Selection</label>
                                     <div class="picker-flex">
                                         <input type="color" id="rgbColorInput" value="#00e5ff" class="color-swatch-picker" />
                                         <span class="color-hex-tag" id="colorHexText">#00E5FF</span>
@@ -250,134 +533,216 @@
                                             <span class="swatch" style="background:#00e676" data-color="#00e676" title="Viper Green"></span>
                                             <span class="swatch" style="background:#ff0055" data-color="#ff0055" title="Laser Crimson"></span>
                                             <span class="swatch" style="background:#ffb300" data-color="#ffb300" title="Cyber Amber"></span>
+                                            <span class="swatch" style="background:#ffffff" data-color="#ffffff" title="Clean White"></span>
                                         </div>
                                     </div>
                                 </div>
 
+                                <div class="rgb-preview-display">
+                                    <div class="rgb-glow-demo" id="rgbGlowDemo"></div>
+                                    <span class="rgb-status-label" id="rgbStatusLabel">Active: Logitech Cyan (#00E5FF)</span>
+                                </div>
+
                                 <button class="btn btn-accent btn-full" id="btnApplyRgb">
-                                    Send Long Report (0x11) RGB Packet
+                                    Dispatch Long Report (0x11) & Save to NV Flash
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
 
+                    <!-- RGB Info & Non-Volatile Persistence -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">Persistence</span>
+                                <h2>Non-Volatile Flash Lighting</h2>
+                            </div>
+                            <span class="card-badge badge-success">0x01 NV Flag</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="section-desc">Logitech HID++ 2.0 Feature 0x8070 allows storing lighting configurations directly in non-volatile EEPROM memory.</p>
+                            
+                            <div class="wire-breakdown-box">
+                                <span class="breakdown-title">Packet Structure (Long Report 0x11, 20 Bytes):</span>
+                                <code>0x11 [devIdx] [featIdx] [fn 0x03 | sw] [zone] [mode] [R] [G] [B] [0x02] 00 00 00 00 00 00 [0x01 PERSISTENCE] 00 00 00</code>
+                            </div>
+
+                            <div class="feature-list-simple">
+                                <div class="f-item">
+                                    <span class="f-bullet">✓</span>
+                                    <span>Software Lighting Control (Function 0x08) automatically enabled before write.</span>
+                                </div>
+                                <div class="f-item">
+                                    <span class="f-bullet">✓</span>
+                                    <span>Synchronizes primary logo and DPI LED clusters seamlessly.</span>
+                                </div>
+                                <div class="f-item">
+                                    <span class="f-bullet">✓</span>
+                                    <span>Persists across PC reboots, power cuts, and operating system switches.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
-            <!-- Right Column: Protocol Discovery & Wire Telemetry Stream -->
-            <section class="telemetry-column">
-                
-                <!-- Dynamic Feature Resolution Table (0x0000 Root) -->
-                <div class="card glass-card">
-                    <div class="card-header">
-                        <div class="card-title-group">
-                            <span class="feature-tag">0x0000</span>
-                            <h2>Root Feature Map Discovery</h2>
+            <!-- TAB 5: POWER & BATTERY TELEMETRY -->
+            <section id="tab-power" class="tab-pane">
+                <div class="content-grid-two-col">
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x1004 / 0x1000</span>
+                                <h2>Battery Status & Telemetry</h2>
+                            </div>
+                            <span class="card-badge" id="batteryStateBadge">Awaiting Telemetry</span>
                         </div>
-                        <button class="btn btn-xs btn-outline" id="btnRefreshDiscovery">Query Root (0x00)</button>
+                        <div class="card-body">
+                            <div class="battery-hero-gauge">
+                                <div class="battery-ring">
+                                    <span class="battery-percentage-big" id="batteryBigPercent">--%</span>
+                                    <span class="battery-status-sub" id="batteryStatusSub">Disconnected</span>
+                                </div>
+                            </div>
+
+                            <div class="battery-details-grid">
+                                <div class="b-metric">
+                                    <span class="m-label">Charging State</span>
+                                    <span class="m-val" id="metricChargingState">--</span>
+                                </div>
+                                <div class="b-metric">
+                                    <span class="m-label">Battery Level</span>
+                                    <span class="m-val" id="metricBatteryLevel">--</span>
+                                </div>
+                                <div class="b-metric">
+                                    <span class="m-label">Wireless Charging (PowerPlay)</span>
+                                    <span class="m-val" id="metricPowerPlay">--</span>
+                                </div>
+                                <div class="b-metric">
+                                    <span class="m-label">Feature Protocol</span>
+                                    <span class="m-val" id="metricBatteryProto">0x1004 Unified</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-secondary btn-full" id="btnRefreshBattery" style="margin-top:20px;">
+                                Query Battery Telemetry (Function 0x01)
+                            </button>
+                        </div>
                     </div>
-                    <div class="card-body no-pad">
-                        <div class="table-scroll-container">
-                            <table class="protocol-table" id="featuresTable">
-                                <thead>
-                                    <tr>
-                                        <th>Feature ID</th>
-                                        <th>Name</th>
-                                        <th>Runtime Idx</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="featuresTableBody">
-                                    <tr>
-                                        <td><code>0x0000</code></td>
-                                        <td>IRoot (Discovery)</td>
-                                        <td><code>0x00</code></td>
-                                        <td>Core</td>
-                                        <td><span class="badge badge-success">Permanent</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x0001</code></td>
-                                        <td>IFeatureSet</td>
-                                        <td><code>0x01</code></td>
-                                        <td>Standard</td>
-                                        <td><span class="badge badge-success">Discovered</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x0003</code></td>
-                                        <td>IDeviceInfo</td>
-                                        <td><code>0x02</code></td>
-                                        <td>Standard</td>
-                                        <td><span class="badge badge-success">Discovered</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x2201</code></td>
-                                        <td>AdjustableDPI</td>
-                                        <td><code>0x07</code></td>
-                                        <td>Sensor</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x8061</code></td>
-                                        <td>ReportRate</td>
-                                        <td><code>0x09</code></td>
-                                        <td>USB Bus</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x8070</code></td>
-                                        <td>ColorLED_RGB</td>
-                                        <td><code>0x0D</code></td>
-                                        <td>Lighting</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>0x8100</code></td>
-                                        <td>OnboardProfiles</td>
-                                        <td><code>0x0B</code></td>
-                                        <td>EEPROM</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                    <!-- Power Saving & Sleep Timers -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">Energy</span>
+                                <h2>Power Modes & Inactivity Sleep</h2>
+                            </div>
+                            <span class="card-badge badge-cyan">Performance Mode</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">Operating Power Mode</label>
+                                <div class="power-mode-pills">
+                                    <button class="pm-pill active" data-pm="1">
+                                        <span class="pm-name">Performance Mode</span>
+                                        <span class="pm-desc">Maximum sensor accuracy & 1000 Hz continuous report rate</span>
+                                    </button>
+                                    <button class="pm-pill" data-pm="2">
+                                        <span class="pm-name">Endurance Mode</span>
+                                        <span class="pm-desc">Power-saving report rate for extended battery lifetime</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-top:24px;">
+                                <label class="form-label">Inactivity Sleep Timeout</label>
+                                <select class="form-select" id="selSleepTimeout">
+                                    <option value="1">1 Minute</option>
+                                    <option value="2">2 Minutes</option>
+                                    <option value="5" selected>5 Minutes (Recommended)</option>
+                                    <option value="10">10 Minutes</option>
+                                    <option value="15">15 Minutes</option>
+                                    <option value="0">Never Sleep</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Real-Time Packet Wire Inspector -->
-                <div class="card glass-card packet-inspector-card">
-                    <div class="card-header">
-                        <div class="card-title-group">
-                            <div class="pulsing-record-dot"></div>
-                            <h2>WebHID Bus Wire Sniffer (TX / RX)</h2>
-                        </div>
-                        <div class="inspector-actions">
-                            <span class="packet-counter" id="packetCountBadge">0 Packets</span>
-                            <button class="btn btn-xs btn-outline" id="btnPausePackets">Pause</button>
-                            <button class="btn btn-xs btn-outline" id="btnClearPackets">Clear</button>
-                            <button class="btn btn-xs btn-outline" id="btnExportLog">Export JSON</button>
-                        </div>
-                    </div>
-                    
-                    <div class="card-body no-pad console-body">
-                        <div class="packet-stream-feed" id="packetStreamFeed">
-                            <!-- Packets will append here dynamically -->
-                        </div>
-                    </div>
-                </div>
-
             </section>
+
+            <!-- TAB 6: WIRE SNIFFER & DISCOVERY -->
+            <section id="tab-sniffer" class="tab-pane">
+                <div class="content-grid-two-col">
+                    <!-- Feature Table -->
+                    <div class="card glass-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <span class="feature-tag">0x0000</span>
+                                <h2>Root Feature Map Discovery</h2>
+                            </div>
+                            <button class="btn btn-xs btn-outline" id="btnRefreshDiscovery">Query Root (0x00)</button>
+                        </div>
+                        <div class="card-body no-pad">
+                            <div class="table-scroll-container">
+                                <table class="protocol-table" id="featuresTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Feature ID</th>
+                                            <th>Name</th>
+                                            <th>Runtime Idx</th>
+                                            <th>Type</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="featuresTableBody">
+                                        <tr>
+                                            <td><code>0x0000</code></td>
+                                            <td>IRoot (Discovery)</td>
+                                            <td><code>0x00</code></td>
+                                            <td>Core</td>
+                                            <td><span class="badge badge-success">Permanent</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Packet Wire Sniffer -->
+                    <div class="card glass-card packet-inspector-card">
+                        <div class="card-header">
+                            <div class="card-title-group">
+                                <div class="pulsing-record-dot"></div>
+                                <h2>WebHID Bus Wire Sniffer (TX / RX)</h2>
+                            </div>
+                            <div class="inspector-actions">
+                                <span class="packet-counter" id="packetCountBadge">0 Packets</span>
+                                <button class="btn btn-xs btn-outline" id="btnPausePackets">Pause</button>
+                                <button class="btn btn-xs btn-outline" id="btnClearPackets">Clear</button>
+                                <button class="btn btn-xs btn-outline" id="btnExportLog">Export JSON</button>
+                            </div>
+                        </div>
+                        
+                        <div class="card-body no-pad console-body">
+                            <div class="packet-stream-feed" id="packetStreamFeed">
+                                <!-- Packets append dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
 
-        <!-- Footer / Notification Toast -->
+        <!-- Footer -->
         <footer class="app-footer">
             <div class="footer-left">
-                <span>Protocol: HID++ 2.0 / 4.2 Short (0x10, 7B) & Long (0x11, 20B) Reports</span>
+                <span>Protocol: HID++ 2.0 / 4.x Short (0x10, 7B) & Long (0x11, 20B) Reports</span>
                 <span class="separator">•</span>
-                <span>Reverse-Engineered from OnboardMemoryManager_2.7.4428.exe</span>
+                <span>Zero-Install Onboard Memory Manager via WebHID</span>
             </div>
             <div class="footer-right">
-                <span id="transportMode">Transport: WebHID / Native Raw Chromium</span>
+                <span id="transportMode">Transport: WebHID / Native Chromium</span>
             </div>
         </footer>
     </div>
