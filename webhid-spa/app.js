@@ -272,23 +272,27 @@ class AppController {
             });
         });
 
-        // Sensor Tuning Switches
-        this.chkAngleSnapping.addEventListener('change', async (e) => {
-            this.angleSnapping = e.target.checked;
-            try {
-                if (this.device.isConnected) {
-                    await this.device.setAngleSnapping(this.angleSnapping);
+        // Sensor Tuning Switches (if present in DOM)
+        if (this.chkAngleSnapping) {
+            this.chkAngleSnapping.addEventListener('change', async (e) => {
+                this.angleSnapping = e.target.checked;
+                try {
+                    if (this.device.isConnected) {
+                        await this.device.setAngleSnapping(this.angleSnapping);
+                    }
+                    this.showToast(`Angle Snapping: ${this.angleSnapping ? 'Enabled' : 'Disabled'}`, 'info');
+                } catch (err) {
+                    this.showToast(err.message, 'error');
                 }
-                this.showToast(`Angle Snapping: ${this.angleSnapping ? 'Enabled' : 'Disabled'}`, 'info');
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        });
+            });
+        }
 
-        this.chkSeparateXY.addEventListener('change', (e) => {
-            this.separateXY = e.target.checked;
-            this.showToast(`Independent X/Y DPI: ${this.separateXY ? 'Active' : 'Unified'}`, 'info');
-        });
+        if (this.chkSeparateXY) {
+            this.chkSeparateXY.addEventListener('change', (e) => {
+                this.separateXY = e.target.checked;
+                this.showToast(`Independent X/Y DPI: ${this.separateXY ? 'Active' : 'Unified'}`, 'info');
+            });
+        }
 
         // Button Remapping Events
         this.actionCatTabs.forEach(catTab => {

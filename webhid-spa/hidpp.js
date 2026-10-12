@@ -227,9 +227,12 @@ export class HidppDevice {
 
         this.deviceIndex = isReceiver ? 0x01 : 0xFF;
 
-        this.readDevice.addEventListener('inputreport', (event) => {
-            this.handleInputReport(event);
-        });
+        const uniqueDevices = new Set([this.writeDevice, this.readDevice].filter(Boolean));
+        for (const dev of uniqueDevices) {
+            dev.addEventListener('inputreport', (event) => {
+                this.handleInputReport(event);
+            });
+        }
 
         this.isConnected = true;
 
@@ -491,11 +494,6 @@ export class HidppDevice {
     async setLightingEffect(zone, effectMode, r, g, b, periodMs = 3000, intensity = 100) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
         if (!featIdx) throw new Error('Color LED feature (0x8070) not available.');
-
-        // Step 1: Ensure Software Lighting Control (Function 0x08) is enabled
-        try {
-            await this.sendCommand(featIdx, 0x08, [0x01, 0x00, 0x00]);
-        } catch (e) {}
 
         const periodHi = (periodMs >> 8) & 0xFF;
         const periodLo = periodMs & 0xFF;
