@@ -60,6 +60,9 @@ class AppController {
         // Battery State
         this.batteryInfo = { percent: 80, isCharging: false, level: 4 };
 
+        // Session Snapshot
+        this.sessionSnapshot = null;
+
         this.initDom();
         this.checkBrowserCompatibility();
         this.bindEvents();
@@ -67,6 +70,7 @@ class AppController {
         this.renderPhysicalButtons();
         this.updateGauge(this.dpiStages[this.activeStageIndex]);
         this.updateRgbControlVisibility();
+        this.takeSessionSnapshot();
     }
 
     /* -------------------------------------------------------------
@@ -130,6 +134,7 @@ class AppController {
         this.modWin = document.getElementById('modWin');
         this.btnAssignAction = document.getElementById('btnAssignAction');
         this.btnCommitRemappings = document.getElementById('btnCommitRemappings');
+        this.btnResetButtonsDefault = document.getElementById('btnResetButtonsDefault');
 
         // Profiles Tab
         this.slotTabs = document.querySelectorAll('.slot-tab');
@@ -138,6 +143,8 @@ class AppController {
         this.sectorAddr = document.getElementById('sectorAddr');
         this.btnActivateSlot = document.getElementById('btnActivateSlot');
         this.btnCommitFlash = document.getElementById('btnCommitFlash');
+        this.btnRestoreSession = document.getElementById('btnRestoreSession');
+        this.btnRestoreFactory = document.getElementById('btnRestoreFactory');
         this.chkOnboardMode = document.getElementById('chkOnboardMode');
         this.onboardModeBadge = document.getElementById('onboardModeBadge');
 
@@ -332,8 +339,9 @@ class AppController {
             chk.addEventListener('change', () => this.updateKeystrokeDisplay());
         });
 
-        this.btnAssignAction.addEventListener('click', () => this.applyActionAssignment());
-        this.btnCommitRemappings.addEventListener('click', () => this.commitAllRemappings());
+        if (this.btnAssignAction) this.btnAssignAction.addEventListener('click', () => this.applyActionAssignment());
+        if (this.btnCommitRemappings) this.btnCommitRemappings.addEventListener('click', () => this.commitAllRemappings());
+        if (this.btnResetButtonsDefault) this.btnResetButtonsDefault.addEventListener('click', () => this.resetButtonsToDefault());
 
         this.btnToggleSpy.addEventListener('click', async () => {
             if (!this.device.isConnected) {
@@ -420,8 +428,10 @@ class AppController {
             });
         });
 
-        this.btnActivateSlot.addEventListener('click', () => this.applyActiveProfile(this.currentSlot));
-        this.btnCommitFlash.addEventListener('click', () => this.applyCommitFlash(this.currentSlot));
+        if (this.btnActivateSlot) this.btnActivateSlot.addEventListener('click', () => this.applyActiveProfile(this.currentSlot));
+        if (this.btnCommitFlash) this.btnCommitFlash.addEventListener('click', () => this.applyCommitFlash(this.currentSlot));
+        if (this.btnRestoreSession) this.btnRestoreSession.addEventListener('click', () => this.restoreSessionConfig());
+        if (this.btnRestoreFactory) this.btnRestoreFactory.addEventListener('click', () => this.restoreFactoryDefaults());
 
         this.chkOnboardMode.addEventListener('change', async (e) => {
             this.onboardMode = e.target.checked;
@@ -522,6 +532,7 @@ class AppController {
             this.showToast(`Connected: ${info.name}`, 'success');
 
             await this.syncHardwareState();
+            this.takeSessionSnapshot();
         } catch (err) {
             console.error(err);
             this.showToast(err.message || 'Failed to connect WebHID device', 'error');
@@ -963,6 +974,166 @@ class AppController {
             this.showToast(`Profile #${slot} successfully written to EEPROM flash!`, 'success');
         } catch (err) {
             this.showToast(err.message, 'error');
+        }
+    }
+
+    takeSessionSnapshot() {
+        this.sessionSnapshot = {
+            dpiStages: [...this.dpiStages],
+            activeStageIndex: this.activeStageIndex,
+            defaultStageIndex: this.defaultStageIndex,
+            sniperStageIndex: this.sniperStageIndex,
+            currentRate: this.currentRate,
+            currentSlot: this.currentSlot,
+            profileNames: { ...this.profileNames },
+            currentZone: this.currentZone,
+            currentMode: this.currentMode,
+            currentColor: this.currentColor,
+            currentPeriod: this.currentPeriod,
+            currentIntensity: this.currentIntensity,
+            buttons: JSON.parse(JSON.stringify(this.physicalButtons))
+        };
+    }
+
+    async restoreSessionConfig() {
+        if (!this.sessionSnapshot) {
+            this.showToast('No session snapshot found to restore', 'error');
+            return;
+        }
+
+        const snap = this.sessionSnapshot;
+        this.dpiStages = [...snap.dpiStages];
+        this.activeStageIndex = snap.activeStageIndex;
+        this.defaultStageIndex = snap.defaultStageIndex;
+        this.sniperStageIndex = snap.sniperStageIndex;
+        this.currentRate = snap.currentRate;
+        this.currentSlot = snap.currentSlot;
+        this.profileNames = { ...snap.profileNames };
+        this.currentZone = snap.currentZone;
+        this.currentMode = snap.currentMode;
+        this.currentColor = snap.currentColor;
+        this.currentPeriod = snap.currentPeriod;
+        this.currentIntensity = snap.currentIntensity;
+        this.physicalButtons = JSON.parse(JSON.stringify(snap.buttons));
+
+        // Update UI
+        this.renderDpiStages();
+        this.updateActiveDpiDisplay(this.dpiStages[this.activeStageIndex]);
+        if (this.pollingBadge) this.pollingBadge.textContent = `${this.currentRate} Hz`;
+        this.rateCards.forEach(c => {
+            if (parseInt(c.dataset.rate, 10) === this.currentRate) c.classList.add('active');
+            else c.classList.remove('active');
+        });
+        this.renderPhysicalButtons();
+        this.selectProfileSlot(this.currentSlot);
+        this.updateRgbControlVisibility();
+        if (this.periodSlider) this.periodSlider.value = this.currentPeriod;
+        if (this.periodValueBadge) this.periodValueBadge.textContent = `${this.currentPeriod.toLocaleString()} ms (${(this.currentPeriod / 1000).toFixed(1)}s cycle)`;
+        if (this.intensitySlider) this.intensitySlider.value = this.currentIntensity;
+        if (this.intensityValueBadge) this.intensityValueBadge.textContent = `${this.currentIntensity}%`;
+
+        // If hardware is connected, apply settings
+        if (this.device.isConnected) {
+            try {
+                await this.device.setDpi(this.dpiStages[this.activeStageIndex]);
+                await this.device.setReportRate(this.currentRate);
+                await this.device.setActiveProfile(this.currentSlot);
+                const mapArray = new Array(16).fill(0);
+                for (let i = 0; i < this.physicalButtons.length && i < 16; i++) {
+                    mapArray[i] = this.physicalButtons[i].defaultAction.value || (i + 1);
+                }
+                await this.device.setButtonRemappings(mapArray);
+                await this.applyLighting();
+                await this.device.commitProfileToFlash(this.currentSlot);
+            } catch (err) {
+                console.error('Error syncing restored session to device:', err);
+            }
+        }
+
+        this.showToast('↺ Reverted to Session Start configuration', 'success');
+    }
+
+    async restoreFactoryDefaults() {
+        // Factory G502 parameters
+        this.dpiStages = [400, 800, 1600, 3200, 6400];
+        this.activeStageIndex = 2; // 1600 DPI
+        this.defaultStageIndex = 2;
+        this.sniperStageIndex = 0; // 400 DPI
+        this.currentRate = 1000;
+        this.currentSlot = 1;
+        this.profileNames = {
+            1: 'Default / FPS',
+            2: 'MMO / Macros',
+            3: 'Sniper Low',
+            4: 'Productivity',
+            5: 'General'
+        };
+        this.currentMode = 3; // Color Cycle default
+        this.currentColor = '#00e5ff';
+        this.currentPeriod = 3000;
+        this.currentIntensity = 100;
+        this.physicalButtons = JSON.parse(JSON.stringify(PHYSICAL_BUTTONS));
+
+        // Update UI
+        this.renderDpiStages();
+        this.updateActiveDpiDisplay(1600);
+        if (this.pollingBadge) this.pollingBadge.textContent = '1000 Hz';
+        this.rateCards.forEach(c => {
+            if (parseInt(c.dataset.rate, 10) === 1000) c.classList.add('active');
+            else c.classList.remove('active');
+        });
+        this.renderPhysicalButtons();
+        this.selectProfileSlot(1);
+        this.modePills.forEach(p => {
+            if (p.dataset.mode === '3') p.classList.add('active');
+            else p.classList.remove('active');
+        });
+        this.updateRgbControlVisibility();
+        if (this.periodSlider) this.periodSlider.value = 3000;
+        if (this.periodValueBadge) this.periodValueBadge.textContent = '3,000 ms (3.0s cycle)';
+        if (this.intensitySlider) this.intensitySlider.value = 100;
+        if (this.intensityValueBadge) this.intensityValueBadge.textContent = '100%';
+
+        // If hardware is connected, apply factory settings and commit
+        if (this.device.isConnected) {
+            try {
+                await this.device.setDpi(1600);
+                await this.device.setReportRate(1000);
+                await this.device.setActiveProfile(1);
+                // Identity mapping 1..16
+                const mapArray = Array.from({ length: 16 }, (_, i) => i + 1);
+                await this.device.setButtonRemappings(mapArray);
+                // Factory color cycle
+                await this.device.setLightingEffect(0, 3, 0, 0, 0, 3000, 100);
+                try { await this.device.setLightingEffect(1, 3, 0, 0, 0, 3000, 100); } catch (e) {}
+                await this.device.commitProfileToFlash(1);
+            } catch (err) {
+                console.error('Error committing factory defaults:', err);
+            }
+        }
+
+        this.showToast('⚡ Restored to Factory Hardware Defaults & Committed to Flash', 'success');
+    }
+
+    async resetButtonsToDefault() {
+        this.physicalButtons = JSON.parse(JSON.stringify(PHYSICAL_BUTTONS));
+        this.selectedButtonId = 1;
+        const targetBtn = this.physicalButtons[0];
+        if (this.selectedButtonTitle) this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
+        if (this.selectedButtonBadge) this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
+        this.renderPhysicalButtons();
+
+        if (this.device.isConnected) {
+            try {
+                const mapArray = Array.from({ length: 16 }, (_, i) => i + 1);
+                await this.device.setButtonRemappings(mapArray);
+                await this.device.commitProfileToFlash(this.currentSlot);
+                this.showToast('All buttons reset to factory defaults and saved to EEPROM!', 'success');
+            } catch (err) {
+                this.showToast(err.message, 'error');
+            }
+        } else {
+            this.showToast('Buttons reset to default (Offline)', 'info');
         }
     }
 

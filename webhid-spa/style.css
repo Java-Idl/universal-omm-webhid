@@ -1947,3 +1947,38 @@ input:checked + .slider-toggle:before {
     color: var(--text-muted);
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* ==========================================================================
+   Profile Restore & Reset Actions
+   ========================================================================== */
+.profile-restore-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.profile-restore-row .btn {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 10px 14px;
+}
+
+.btn-danger-outline {
+    background: rgba(255, 0, 85, 0.08);
+    border: 1px solid rgba(255, 0, 85, 0.4);
+    color: #ff3377;
+    border-radius: var(--radius-md);
+    font-family: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-danger-outline:hover {
+    background: rgba(255, 0, 85, 0.22);
+    border-color: #ff0055;
+    color: #fff;
+    box-shadow: 0 0 14px rgba(255, 0, 85, 0.4);
+}

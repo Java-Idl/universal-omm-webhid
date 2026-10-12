@@ -407,6 +407,7 @@
                             <div class="action-confirm-row">
                                 <button class="btn btn-primary btn-full" id="btnAssignAction">Apply Assignment to Button</button>
                                 <button class="btn btn-secondary btn-full" id="btnCommitRemappings">Commit Remappings to Flash EEPROM (0x0C)</button>
+                                <button class="btn btn-outline btn-full" id="btnResetButtonsDefault">Reset All Buttons to Factory Default</button>
                             </div>
                         </div>
                     </div>
@@ -468,6 +469,15 @@
                                     </button>
                                     <button class="btn btn-primary" id="btnCommitFlash">
                                         Commit Changes to Flash EEPROM (0x0C)
+                                    </button>
+                                </div>
+
+                                <div class="profile-restore-row">
+                                    <button class="btn btn-outline" id="btnRestoreSession" title="Revert all settings back to the initial state when this peripheral was connected in this session">
+                                        ↺ Revert to Session Start
+                                    </button>
+                                    <button class="btn btn-danger-outline" id="btnRestoreFactory" title="Reset this profile and device settings back to factory hardware defaults">
+                                        ⚡ Restore to Factory Defaults
                                     </button>
                                 </div>
                             </div>
