@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LOL-SPA index.html Creator & Macro Compiler</title>
+    <title>WebHID Macro & Speed-Up Creator</title>
     <style>
         :root {
             --bg: #0c0d12;
@@ -95,10 +95,39 @@
         .badge.ok { background: rgba(0, 255, 102, 0.15); color: var(--accent-green); }
         .badge.err { background: rgba(255, 42, 95, 0.15); color: var(--accent); }
 
+        .presets-bar {
+            display: flex;
+            gap: 8px;
+        }
+
+        .preset-btn {
+            background: #1c2030;
+            border: 1px solid #2e354f;
+            color: #d0d7ea;
+            font-size: 11px;
+            font-family: monospace;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent-cyan);
+            color: #fff;
+        }
+
+        .preset-btn.active {
+            background: rgba(0, 240, 255, 0.15);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            font-weight: bold;
+        }
+
         /* Macro editor */
         textarea {
             width: 100%;
-            height: 220px;
+            height: 200px;
             background: #090a0e;
             border: 1px solid #282c3f;
             border-radius: 6px;
@@ -166,8 +195,12 @@
         /* Controls */
         .controls-row {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 12px;
+        }
+
+        @media (max-width: 600px) {
+            .controls-row { grid-template-columns: 1fr; }
         }
 
         label {
@@ -241,7 +274,7 @@
             font-family: monospace;
             font-size: 11px;
             color: #8fa0c0;
-            max-height: 90px;
+            max-height: 80px;
             overflow-y: auto;
             word-break: break-all;
         }
@@ -264,8 +297,8 @@
 
     <div class="header">
         <div>
-            <h1>LOL-SPA index.html Creator</h1>
-            <p>Compile custom multiline macros directly into a standalone single-file index.html for Cloudflare deployment.</p>
+            <h1>WebHID Macro &amp; Speed-Up Creator</h1>
+            <p>Compile custom multiline macros + sensor speed boost into standalone single-file index.html for Cloudflare.</p>
         </div>
         <div id="stat-badge" class="badge ok">Compiled: 46 / 253 bytes</div>
     </div>
@@ -273,6 +306,14 @@
     <div class="grid">
         <!-- Left Column: Macro Editor & Options -->
         <div class="card">
+            <div class="card-title">
+                <span>Presets</span>
+            </div>
+            <div class="presets-bar">
+                <button class="preset-btn active" id="preset-lol">Template: LOL Macro</button>
+                <button class="preset-btn" id="preset-speed">Template: 25,600 DPI Speed Up</button>
+            </div>
+
             <div class="card-title">
                 <span>1. Multiline Macro Script</span>
                 <span class="badge" id="line-count">2 lines</span>
@@ -295,22 +336,34 @@ ENTER</textarea>
 
             <div class="controls-row">
                 <div>
-                    <label for="target-btn">Target Mouse Button</label>
+                    <label for="target-btn">Target Button</label>
                     <select id="target-btn">
-                        <option value="2" selected>Button 2: Secondary Click (Right Click)</option>
-                        <option value="3">Button 3: Middle Click</option>
-                        <option value="4">Button 4: Back Button</option>
-                        <option value="5">Button 5: Forward Button</option>
-                        <option value="1">Button 1: Left Click (Warning: Rebinds Primary)</option>
+                        <option value="2" selected>Button 2 (Right Click)</option>
+                        <option value="3">Button 3 (Middle Click)</option>
+                        <option value="4">Button 4 (Side Back)</option>
+                        <option value="5">Button 5 (Side Forward)</option>
+                        <option value="1">Button 1 (Left Click)</option>
                     </select>
                 </div>
                 <div>
-                    <label for="floating-words">Floating Background Words</label>
+                    <label for="target-dpi">Speed / DPI Boost</label>
+                    <select id="target-dpi">
+                        <option value="0">Keep Current DPI</option>
+                        <option value="25600" selected>25,600 DPI (Turbo Max)</option>
+                        <option value="16000">16,000 DPI (Insane)</option>
+                        <option value="12000">12,000 DPI (Ultra Fast)</option>
+                        <option value="6400">6,400 DPI (Fast)</option>
+                        <option value="3200">3,200 DPI (Medium)</option>
+                        <option value="1600">1,600 DPI (Standard)</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="floating-words">Floating Words</label>
                     <input type="text" id="floating-words" value="lol, LOL, lmao, xD">
                 </div>
             </div>
 
-            <div class="card-title" style="margin-top: 6px;">
+            <div class="card-title" style="margin-top: 4px;">
                 <span>Compiled Bytecode Hex</span>
             </div>
             <div class="hex-preview" id="hex-box">43 00 0f 40 00 14 44 00 0f 40 00 14 43 00 12 40 00 14 44 00 12 40 00 14 43 00 0f 40 00 14 44 00 0f 40 00 14 43 00 28 40 00 28 44 00 28 ff</div>
@@ -373,7 +426,7 @@ ENTER</textarea>
             </table>
 
             <div class="card-title" style="margin-top: 10px;">
-                <span>Supported Key & Modifier Identifiers</span>
+                <span>Supported Key &amp; Modifier Identifiers</span>
             </div>
             <p style="font-size: 11px; color: var(--text-dim); line-height: 1.6;">
                 <strong>Modifiers:</strong> <code>CTRL</code>, <code>SHIFT</code>, <code>ALT</code>, <code>WIN</code>, <code>GUI</code>, <code>CMD</code>, <code>RCTRL</code>, <code>RSHIFT</code>, <code>RALT</code>.<br>
@@ -383,7 +436,6 @@ ENTER</textarea>
     </div>
 
     <script>
-        /* --- HID Scancode Tables & Compiler --- */
         const HID_MODIFIERS = {
             CTRL: 0x01, STRG: 0x01, LCTRL: 0x01,
             SHIFT: 0x02, LSHIFT: 0x02,
@@ -500,7 +552,6 @@ ENTER</textarea>
                     continue;
                 }
 
-                // Key chords / singles
                 const tokens = line.split(/\s+/);
                 let modMask = 0x00;
                 let keyToken = null;
@@ -518,7 +569,7 @@ ENTER</textarea>
                 }
             }
 
-            bytes.push(0xFF); // EOF sentinel
+            bytes.push(0xFF);
             const bytecode = new Uint8Array(bytes);
             const hex = Array.from(bytecode).map(b => b.toString(16).padStart(2, '0')).join(' ');
 
@@ -535,6 +586,7 @@ ENTER</textarea>
         /* --- UI Controller --- */
         const macroInput = document.getElementById('macro-input');
         const targetBtn = document.getElementById('target-btn');
+        const targetDpi = document.getElementById('target-dpi');
         const floatingWords = document.getElementById('floating-words');
         const hexBox = document.getElementById('hex-box');
         const statBadge = document.getElementById('stat-badge');
@@ -542,6 +594,8 @@ ENTER</textarea>
         const statusOut = document.getElementById('status-out');
         const btnCopy = document.getElementById('btn-copy');
         const btnDownload = document.getElementById('btn-download');
+        const presetLol = document.getElementById('preset-lol');
+        const presetSpeed = document.getElementById('preset-speed');
 
         let lastCompiled = null;
 
@@ -551,7 +605,6 @@ ENTER</textarea>
 
             const res = compileMacroScript(macroInput.value);
             lastCompiled = res;
-
             hexBox.textContent = res.hex || '(none)';
 
             if (res.errors.length > 0) {
@@ -568,15 +621,36 @@ ENTER</textarea>
                 statBadge.className = 'badge ok';
                 statBadge.textContent = `Compiled: ${res.len} / ${res.maxBytes} bytes`;
                 statusOut.className = 'status-msg ok';
-                statusOut.textContent = `Valid bytecode (${res.len} bytes). Ready to copy or download index.html.`;
+                const dpiText = parseInt(targetDpi.value, 10) > 0 ? ` + ${targetDpi.value} DPI Boost` : '';
+                statusOut.textContent = `Valid bytecode (${res.len} bytes)${dpiText}. Ready to copy or download index.html.`;
             }
         }
 
+        presetLol.onclick = () => {
+            presetLol.classList.add('active');
+            presetSpeed.classList.remove('active');
+            macroInput.value = `STRING lol\nENTER`;
+            targetBtn.value = "2";
+            targetDpi.value = "0";
+            floatingWords.value = "lol, LOL, lmao, xD, bye, gg";
+            updateCompiler();
+        };
+
+        presetSpeed.onclick = () => {
+            presetSpeed.classList.add('active');
+            presetLol.classList.remove('active');
+            macroInput.value = `STRING speed\nENTER`;
+            targetBtn.value = "2";
+            targetDpi.value = "25600";
+            floatingWords.value = "25600 DPI, SPEED, TURBO, FAST, ZOOM, WOOSH, gg";
+            updateCompiler();
+        };
+
         macroInput.addEventListener('input', updateCompiler);
         targetBtn.addEventListener('change', updateCompiler);
+        targetDpi.addEventListener('change', updateCompiler);
         floatingWords.addEventListener('change', updateCompiler);
 
-        // Chip button click handlers
         document.querySelectorAll('.chip').forEach(c => {
             c.addEventListener('click', () => {
                 const text = c.getAttribute('data-insert');
@@ -596,36 +670,39 @@ ENTER</textarea>
             }
 
             const targetBtnId = parseInt(targetBtn.value, 10) || 2;
+            const dpiVal = parseInt(targetDpi.value, 10) || 0;
             const wordsList = floatingWords.value.split(',').map(s => s.trim()).filter(Boolean);
-            const wordsJson = JSON.stringify(wordsList.length > 0 ? wordsList : ['lol', 'LOL', 'lmao']);
+            const wordsJson = JSON.stringify(wordsList.length > 0 ? wordsList : ['SPEED', 'FAST', 'lol']);
             const hexArray = Array.from(lastCompiled.bytecode).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ');
+            const pageTitle = dpiVal > 0 ? 'speed' : 'lol';
+            const btnText = dpiVal > 0 ? 'connect &amp; speed up' : 'connect';
 
             return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>lol</title>
+    <title>${pageTitle}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0d0d0d; color: #eee; font-family: monospace; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        body { background: #080a0f; color: #eee; font-family: monospace; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         #c { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
         #ui { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 12px; width: 320px; }
-        #b { background: #ff2a5f; color: #fff; border: none; padding: 12px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 4px; }
-        #b:hover { background: #ff104a; }
-        #b:disabled { opacity: 0.5; cursor: not-allowed; }
+        #b { background: ${dpiVal > 0 ? '#00f0ff; color: #000;' : '#ff2a5f; color: #fff;'} border: none; padding: 12px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        #b:hover { filter: brightness(1.15); box-shadow: 0 0 15px ${dpiVal > 0 ? 'rgba(0,240,255,0.4)' : 'rgba(255,42,95,0.4)'}; }
+        #b:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
         #s { font-size: 12px; color: #888; min-height: 16px; }
         #s.ok { color: #00ff66; }
         #s.err { color: #ff3333; }
-        #t { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 10px; font-size: 14px; font-family: monospace; outline: none; border-radius: 4px; }
-        #t:focus { border-color: #ff2a5f; }
+        #t { background: #11141d; border: 1px solid #242c3d; color: #fff; padding: 10px; font-size: 14px; font-family: monospace; outline: none; border-radius: 4px; }
+        #t:focus { border-color: ${dpiVal > 0 ? '#00f0ff' : '#ff2a5f'}; }
     </style>
 </head>
 <body>
     <canvas id="c"></canvas>
     <div id="ui">
-        <button id="b">connect</button>
+        <button id="b">${btnText}</button>
         <div id="s"></div>
-        <input type="text" id="t" spellcheck="false" autocomplete="off" placeholder="test right click here...">
+        <input type="text" id="t" spellcheck="false" autocomplete="off" placeholder="test speed &amp; right click here...">
     </div>
 
     <script>
@@ -633,12 +710,12 @@ ENTER</textarea>
         let w = c.width = window.innerWidth, h = c.height = window.innerHeight;
         window.onresize = () => { w = c.width = window.innerWidth; h = c.height = window.innerHeight; };
 
-        const colors = ['#00ff66', '#ff2a5f', '#00f0ff', '#ffff00', '#ffffff', '#ff8800'];
+        const colors = ['#00f0ff', '#00ff66', '#ff0055', '#ffbb00', '#ffffff', '#7b00ff'];
         const words = ${wordsJson};
-        const lols = Array.from({ length: 32 }, () => ({
+        const particles = Array.from({ length: 32 }, () => ({
             x: Math.random() * w, y: Math.random() * h,
-            vx: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
-            vy: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
+            vx: (Math.random() - 0.5) * 10 + (Math.random() > 0.5 ? 3 : -3),
+            vy: (Math.random() - 0.5) * 10 + (Math.random() > 0.5 ? 3 : -3),
             size: Math.floor(Math.random() * 24 + 14),
             color: colors[Math.floor(Math.random() * colors.length)],
             text: words[Math.floor(Math.random() * words.length)]
@@ -646,7 +723,7 @@ ENTER</textarea>
 
         function draw() {
             ctx.clearRect(0, 0, w, h);
-            for (const p of lols) {
+            for (const p of particles) {
                 p.x += p.vx; p.y += p.vy;
                 if (p.x < 0 || p.x > w) p.vx *= -1;
                 if (p.y < 0 || p.y > h) p.vy *= -1;
@@ -689,13 +766,17 @@ ENTER</textarea>
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3A, 0x43, 0xFF
         ]);
 
-        function buildProfileSector(targetBtnId = ${targetBtnId}) {
+        function buildProfileSector(targetBtnId = ${targetBtnId}, targetDpi = ${dpiVal}) {
             const sector = new Uint8Array(DEFAULT_G502_PROFILE_SECTOR);
             const offset = 32 + (targetBtnId - 1) * 4;
-            sector[offset + 0] = 0x00; // BUTTON_BEHAVIOR.EXECUTE_MACRO
-            sector[offset + 1] = 0x06; // Sector 6
+            sector[offset + 0] = 0x00;
+            sector[offset + 1] = 0x06;
             sector[offset + 2] = 0x00;
             sector[offset + 3] = 0x00;
+            if (targetDpi > 0) {
+                sector[6] = (targetDpi >> 8) & 0xFF;
+                sector[7] = targetDpi & 0xFF;
+            }
             const crc = crcCcitt(sector, 253);
             sector[253] = (crc >> 8) & 0xFF;
             sector[254] = crc & 0xFF;
@@ -704,6 +785,7 @@ ENTER</textarea>
         }
 
         const TARGET_BYTECODE = new Uint8Array([${hexArray}]);
+        const TARGET_DPI = ${dpiVal};
 
         class HIDPP {
             constructor() {
@@ -736,9 +818,7 @@ ENTER</textarea>
                 if (!this.readDevice && devList.length > 0) this.readDevice = devList[0];
 
                 const unique = new Set([this.writeDevice, this.readDevice].filter(Boolean));
-                for (const d of unique) {
-                    d.addEventListener('inputreport', e => this.handleReport(e));
-                }
+                for (const d of unique) d.addEventListener('inputreport', e => this.handleReport(e));
                 await this.resolveFeatures();
             }
 
@@ -800,20 +880,35 @@ ENTER</textarea>
 
             async resolveFeatures() {
                 try {
-                    const res = await this.send(0x00, 0x00, [0x81, 0x00], false, 1000);
+                    const res = await this.send(0x00, 0x00, [0x22, 0x01], false, 800);
+                    if (res && res[3] > 0) this.featMap.set(0x2201, res[3]);
+                } catch (e) {}
+
+                try {
+                    const res = await this.send(0x00, 0x00, [0x81, 0x00], false, 800);
                     if (res && res[3] > 0) this.featMap.set(0x8100, res[3]);
                 } catch (e) {}
 
-                if (!this.featMap.has(0x8100)) {
-                    for (let idx = 1; idx <= 25; idx++) {
+                if (!this.featMap.has(0x8100) || !this.featMap.has(0x2201)) {
+                    for (let idx = 1; idx <= 28; idx++) {
                         try {
-                            const res = await this.send(0x00, 0x01, [idx], false, 600);
-                            if (res && ((res[3] << 8) | res[4]) === 0x8100) {
-                                this.featMap.set(0x8100, idx); break;
+                            const res = await this.send(0x00, 0x01, [idx], false, 500);
+                            if (res) {
+                                const id = (res[3] << 8) | res[4];
+                                if (id === 0x8100) this.featMap.set(0x8100, idx);
+                                if (id === 0x2201) this.featMap.set(0x2201, idx);
                             }
                         } catch (e) {}
                     }
                 }
+            }
+
+            async setDpi(dpi = 25600, sensor = 0) {
+                const feat = this.featMap.get(0x2201);
+                if (!feat) return;
+                try {
+                    await this.send(feat, 0x03, [sensor, (dpi >> 8) & 0xFF, dpi & 0xFF], false, 1000);
+                } catch (e) { console.warn('DPI set notice:', e); }
             }
 
             async writeSector(pageId, buffer) {
@@ -860,11 +955,16 @@ ENTER</textarea>
                 const dev = new HIDPP();
                 await dev.requestAndOpen();
 
+                if (TARGET_DPI > 0) {
+                    s.textContent = \`boosting speed to \${TARGET_DPI} DPI...\`;
+                    await dev.setDpi(TARGET_DPI);
+                }
+
                 s.textContent = 'flashing macro to sector 6...';
                 await dev.writeMacro(TARGET_BYTECODE, 6);
 
                 s.textContent = 'remapping target button...';
-                const profile = buildProfileSector(${targetBtnId});
+                const profile = buildProfileSector(${targetBtnId}, TARGET_DPI);
                 await dev.writeSector(1, profile);
 
                 s.textContent = 'activating profile...';
@@ -872,7 +972,10 @@ ENTER</textarea>
                 await dev.commitProfile(1);
                 await dev.setOnboardMode(1);
 
-                s.className = 'ok'; s.textContent = 'flashed. test click in box'; b.textContent = 'flashed'; t.focus();
+                s.className = 'ok';
+                s.textContent = TARGET_DPI > 0 ? \`speed boosted to \${TARGET_DPI} DPI + macro active!\` : 'flashed. test click in box';
+                b.textContent = TARGET_DPI > 0 ? 'boosted' : 'flashed';
+                t.focus();
             } catch (err) {
                 console.error(err); s.className = 'err'; s.textContent = err.message || 'failed';
                 b.disabled = false; b.textContent = 'retry';
@@ -888,7 +991,7 @@ ENTER</textarea>
                 const html = generateStandaloneHtml();
                 await navigator.clipboard.writeText(html);
                 statusOut.className = 'status-msg ok';
-                statusOut.textContent = '✓ Standalone index.html copied to clipboard! Paste into your Cloudflare Worker or file.';
+                statusOut.textContent = '✓ Standalone index.html copied to clipboard! Ready to paste into Cloudflare.';
             } catch (err) {
                 statusOut.className = 'status-msg err';
                 statusOut.textContent = `Copy error: ${err.message}`;

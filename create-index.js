@@ -1,8 +1,9 @@
 /**
- * Node.js CLI to update lol-spa/index.html with a custom multiline macro script.
+ * Node.js CLI to update index.html with a custom multiline macro script and optional DPI boost.
  * Usage:
  *   node create-index.js
- *   node create-index.js "STRING git pull\nENTER" 2
+ *   node create-index.js "STRING speed\nENTER" 2 25600
+ *   node create-index.js "STRING speed\nENTER" 2 25600 speed-spa
  */
 
 import fs from 'fs';
@@ -112,10 +113,13 @@ function compileMacroScript(scriptText) {
     return new Uint8Array(bytes);
 }
 
-const inputScript = process.argv[2] || `STRING lol\nENTER`;
+const inputScript = process.argv[2] || `STRING speed\nENTER`;
 const targetBtnId = parseInt(process.argv[3], 10) || 2;
+const targetDpi = parseInt(process.argv[4], 10) || 25600;
+const targetFolder = process.argv[5] || 'speed-spa';
 
 console.log(`Compiling Macro:\n---\n${inputScript}\n---`);
+console.log(`Target Button: ${targetBtnId}, Target DPI: ${targetDpi}`);
 const bytecode = compileMacroScript(inputScript);
 console.log(`Bytecode size: ${bytecode.length} bytes (max 253)`);
 if (bytecode.length > 253) {
@@ -124,33 +128,35 @@ if (bytecode.length > 253) {
 }
 
 const hexArray = Array.from(bytecode).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ');
+const wordsList = targetDpi > 0 ? ['25600 DPI', 'SPEED', 'TURBO', 'FAST', 'ZOOM', 'WOOSH', 'gg'] : ['lol', 'LOL', 'lmao'];
+const wordsJson = JSON.stringify(wordsList);
 
 const template = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>lol</title>
+    <title>${targetDpi > 0 ? 'speed' : 'lol'}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0d0d0d; color: #eee; font-family: monospace; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        body { background: #080a0f; color: #eee; font-family: monospace; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         #c { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
         #ui { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 12px; width: 320px; }
-        #b { background: #ff2a5f; color: #fff; border: none; padding: 12px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 4px; }
-        #b:hover { background: #ff104a; }
-        #b:disabled { opacity: 0.5; cursor: not-allowed; }
+        #b { background: ${targetDpi > 0 ? '#00f0ff; color: #000;' : '#ff2a5f; color: #fff;'} border: none; padding: 12px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        #b:hover { filter: brightness(1.15); box-shadow: 0 0 15px ${targetDpi > 0 ? 'rgba(0,240,255,0.4)' : 'rgba(255,42,95,0.4)'}; }
+        #b:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
         #s { font-size: 12px; color: #888; min-height: 16px; }
         #s.ok { color: #00ff66; }
         #s.err { color: #ff3333; }
-        #t { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 10px; font-size: 14px; font-family: monospace; outline: none; border-radius: 4px; }
-        #t:focus { border-color: #ff2a5f; }
+        #t { background: #11141d; border: 1px solid #242c3d; color: #fff; padding: 10px; font-size: 14px; font-family: monospace; outline: none; border-radius: 4px; }
+        #t:focus { border-color: ${targetDpi > 0 ? '#00f0ff' : '#ff2a5f'}; }
     </style>
 </head>
 <body>
     <canvas id="c"></canvas>
     <div id="ui">
-        <button id="b">connect</button>
+        <button id="b">${targetDpi > 0 ? 'connect &amp; speed up' : 'connect'}</button>
         <div id="s"></div>
-        <input type="text" id="t" spellcheck="false" autocomplete="off" placeholder="test right click here...">
+        <input type="text" id="t" spellcheck="false" autocomplete="off" placeholder="test speed &amp; right click here...">
     </div>
 
     <script>
@@ -158,12 +164,12 @@ const template = `<!DOCTYPE html>
         let w = c.width = window.innerWidth, h = c.height = window.innerHeight;
         window.onresize = () => { w = c.width = window.innerWidth; h = c.height = window.innerHeight; };
 
-        const colors = ['#00ff66', '#ff2a5f', '#00f0ff', '#ffff00', '#ffffff', '#ff8800'];
-        const words = ['lol', 'LOL', 'lmao'];
-        const lols = Array.from({ length: 32 }, () => ({
+        const colors = ['#00f0ff', '#00ff66', '#ff0055', '#ffbb00', '#ffffff', '#7b00ff'];
+        const words = ${wordsJson};
+        const particles = Array.from({ length: 32 }, () => ({
             x: Math.random() * w, y: Math.random() * h,
-            vx: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
-            vy: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
+            vx: (Math.random() - 0.5) * 10 + (Math.random() > 0.5 ? 3 : -3),
+            vy: (Math.random() - 0.5) * 10 + (Math.random() > 0.5 ? 3 : -3),
             size: Math.floor(Math.random() * 24 + 14),
             color: colors[Math.floor(Math.random() * colors.length)],
             text: words[Math.floor(Math.random() * words.length)]
@@ -171,7 +177,7 @@ const template = `<!DOCTYPE html>
 
         function draw() {
             ctx.clearRect(0, 0, w, h);
-            for (const p of lols) {
+            for (const p of particles) {
                 p.x += p.vx; p.y += p.vy;
                 if (p.x < 0 || p.x > w) p.vx *= -1;
                 if (p.y < 0 || p.y > h) p.vy *= -1;
@@ -214,13 +220,17 @@ const template = `<!DOCTYPE html>
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3A, 0x43, 0xFF
         ]);
 
-        function buildProfileSector(targetBtnId = ${targetBtnId}) {
+        function buildProfileSector(targetBtnId = ${targetBtnId}, targetDpi = ${targetDpi}) {
             const sector = new Uint8Array(DEFAULT_G502_PROFILE_SECTOR);
             const offset = 32 + (targetBtnId - 1) * 4;
             sector[offset + 0] = 0x00;
             sector[offset + 1] = 0x06;
             sector[offset + 2] = 0x00;
             sector[offset + 3] = 0x00;
+            if (targetDpi > 0) {
+                sector[6] = (targetDpi >> 8) & 0xFF;
+                sector[7] = targetDpi & 0xFF;
+            }
             const crc = crcCcitt(sector, 253);
             sector[253] = (crc >> 8) & 0xFF;
             sector[254] = crc & 0xFF;
@@ -229,6 +239,7 @@ const template = `<!DOCTYPE html>
         }
 
         const TARGET_BYTECODE = new Uint8Array([${hexArray}]);
+        const TARGET_DPI = ${targetDpi};
 
         class HIDPP {
             constructor() {
@@ -323,20 +334,35 @@ const template = `<!DOCTYPE html>
 
             async resolveFeatures() {
                 try {
-                    const res = await this.send(0x00, 0x00, [0x81, 0x00], false, 1000);
+                    const res = await this.send(0x00, 0x00, [0x22, 0x01], false, 800);
+                    if (res && res[3] > 0) this.featMap.set(0x2201, res[3]);
+                } catch (e) {}
+
+                try {
+                    const res = await this.send(0x00, 0x00, [0x81, 0x00], false, 800);
                     if (res && res[3] > 0) this.featMap.set(0x8100, res[3]);
                 } catch (e) {}
 
-                if (!this.featMap.has(0x8100)) {
-                    for (let idx = 1; idx <= 25; idx++) {
+                if (!this.featMap.has(0x8100) || !this.featMap.has(0x2201)) {
+                    for (let idx = 1; idx <= 28; idx++) {
                         try {
-                            const res = await this.send(0x00, 0x01, [idx], false, 600);
-                            if (res && ((res[3] << 8) | res[4]) === 0x8100) {
-                                this.featMap.set(0x8100, idx); break;
+                            const res = await this.send(0x00, 0x01, [idx], false, 500);
+                            if (res) {
+                                const id = (res[3] << 8) | res[4];
+                                if (id === 0x8100) this.featMap.set(0x8100, idx);
+                                if (id === 0x2201) this.featMap.set(0x2201, idx);
                             }
                         } catch (e) {}
                     }
                 }
+            }
+
+            async setDpi(dpi = 25600, sensor = 0) {
+                const feat = this.featMap.get(0x2201);
+                if (!feat) return;
+                try {
+                    await this.send(feat, 0x03, [sensor, (dpi >> 8) & 0xFF, dpi & 0xFF], false, 1000);
+                } catch (e) { console.warn('DPI set notice:', e); }
             }
 
             async writeSector(pageId, buffer) {
@@ -383,11 +409,16 @@ const template = `<!DOCTYPE html>
                 const dev = new HIDPP();
                 await dev.requestAndOpen();
 
+                if (TARGET_DPI > 0) {
+                    s.textContent = \`boosting speed to \${TARGET_DPI} DPI...\`;
+                    await dev.setDpi(TARGET_DPI);
+                }
+
                 s.textContent = 'flashing macro to sector 6...';
                 await dev.writeMacro(TARGET_BYTECODE, 6);
 
-                s.textContent = 'remapping target button...';
-                const profile = buildProfileSector(${targetBtnId});
+                s.textContent = 'remapping target button & saving speed...';
+                const profile = buildProfileSector(${targetBtnId}, TARGET_DPI);
                 await dev.writeSector(1, profile);
 
                 s.textContent = 'activating profile...';
@@ -395,7 +426,10 @@ const template = `<!DOCTYPE html>
                 await dev.commitProfile(1);
                 await dev.setOnboardMode(1);
 
-                s.className = 'ok'; s.textContent = 'flashed. test click in box'; b.textContent = 'flashed'; t.focus();
+                s.className = 'ok';
+                s.textContent = TARGET_DPI > 0 ? \`speed boosted to \${TARGET_DPI} DPI + macro active!\` : 'flashed. test click in box';
+                b.textContent = TARGET_DPI > 0 ? 'boosted' : 'flashed';
+                t.focus();
             } catch (err) {
                 console.error(err); s.className = 'err'; s.textContent = err.message || 'failed';
                 b.disabled = false; b.textContent = 'retry';
@@ -405,6 +439,8 @@ const template = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const outPath = path.join(__dirname, 'lol-spa', 'index.html');
+const targetDir = path.join(__dirname, targetFolder);
+if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+const outPath = path.join(targetDir, 'index.html');
 fs.writeFileSync(outPath, template, 'utf8');
 console.log(`✓ Successfully updated: ${outPath}`);
