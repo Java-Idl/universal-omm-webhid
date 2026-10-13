@@ -11,7 +11,8 @@ import {
     BUTTON_BEHAVIOR,
     REMAPPING_OPCODES,
     FUNCTION_OPCODES,
-    CONSUMER_KEYS
+    CONSUMER_KEYS,
+    compileMacroScript
 } from './hidpp.js';
 
 class AppController {
@@ -138,6 +139,18 @@ class AppController {
         this.btnAssignAction = document.getElementById('btnAssignAction');
         this.btnCommitRemappings = document.getElementById('btnCommitRemappings');
         this.btnResetButtonsDefault = document.getElementById('btnResetButtonsDefault');
+
+        // Multiline Macro Bar & Compiler Elements
+        this.macroScriptInput = document.getElementById('macroScriptInput');
+        this.macroCompilerStatus = document.getElementById('macroCompilerStatus');
+        this.macroByteMetric = document.getElementById('macroByteMetric');
+        this.macroInstrMetric = document.getElementById('macroInstrMetric');
+        this.macroBytecodeLength = document.getElementById('macroBytecodeLength');
+        this.macroBytecodeHex = document.getElementById('macroBytecodeHex');
+        this.btnAssignMacro = document.getElementById('btnAssignMacro');
+        this.btnBurnMacroFlash = document.getElementById('btnBurnMacroFlash');
+        this.presetChips = document.querySelectorAll('.preset-chip');
+        this.insertButtons = document.querySelectorAll('.insert-btn');
 
         // Profiles Tab
         this.slotTabs = document.querySelectorAll('.slot-tab');
@@ -370,6 +383,35 @@ class AppController {
         if (this.btnAssignAction) this.btnAssignAction.addEventListener('click', () => this.applyActionAssignment());
         if (this.btnCommitRemappings) this.btnCommitRemappings.addEventListener('click', () => this.commitAllRemappings());
         if (this.btnResetButtonsDefault) this.btnResetButtonsDefault.addEventListener('click', () => this.resetButtonsToDefault());
+
+        // Multiline Macro Bar & Compiler Events
+        if (this.macroScriptInput) {
+            this.macroScriptInput.addEventListener('input', () => this.updateMacroCompilation());
+            // Initial compile on startup
+            this.updateMacroCompilation();
+        }
+
+        this.presetChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const presetKey = chip.dataset.preset;
+                this.loadMacroPreset(presetKey);
+            });
+        });
+
+        this.insertButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const insertText = btn.dataset.insert;
+                this.insertMacroSnippet(insertText);
+            });
+        });
+
+        if (this.btnAssignMacro) {
+            this.btnAssignMacro.addEventListener('click', () => this.applyMacroAssignment());
+        }
+
+        if (this.btnBurnMacroFlash) {
+            this.btnBurnMacroFlash.addEventListener('click', () => this.burnMacroToFlash());
+        }
 
         this.btnToggleSpy.addEventListener('click', async () => {
             if (!this.device.isConnected) {
@@ -1195,6 +1237,120 @@ class AppController {
         this.keystrokePreviewText.textContent = `Assigned: ${text}`;
     }
 
+    loadMacroPreset(presetKey) {
+        const presets = {
+            'run-cmd': `# Open Windows Run & Launch Terminal\nWIN R\nDELAY 200\nTYPE cmd\nDELAY 100\nENTER`,
+            'quick-paste': `# Quick Paste & Submit\nCTRL V\nDELAY 50\nENTER`,
+            'task-mgr': `# Direct Windows Task Manager\nCTRL SHIFT ESC`,
+            'quick-save': `# Save Document\nCTRL S`,
+            'rapid-burst': `# Rapid Key Burst / Double Action\nSPACE\nDELAY 40\nSPACE\nDELAY 40\nSPACE`
+        };
+
+        if (presets[presetKey] && this.macroScriptInput) {
+            this.macroScriptInput.value = presets[presetKey];
+            this.updateMacroCompilation();
+            this.showToast(`Loaded template: ${presetKey}`, 'info');
+        }
+    }
+
+    insertMacroSnippet(text) {
+        const el = this.macroScriptInput;
+        if (!el) return;
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const val = el.value;
+        el.value = val.substring(0, start) + text + val.substring(end);
+        el.selectionStart = el.selectionEnd = start + text.length;
+        el.focus();
+        this.updateMacroCompilation();
+    }
+
+    updateMacroCompilation() {
+        if (!this.macroScriptInput) return null;
+        const script = this.macroScriptInput.value;
+        const maxBytes = (this.device && this.device.deviceInfo && this.device.deviceInfo.name.includes('G305')) ? 240 : 256;
+        const result = compileMacroScript(script, maxBytes);
+
+        if (this.macroByteMetric) {
+            this.macroByteMetric.textContent = `${result.byteLength} / ${maxBytes} Bytes`;
+        }
+        if (this.macroInstrMetric) {
+            this.macroInstrMetric.textContent = `${result.instructionCount} Ops`;
+        }
+        if (this.macroBytecodeLength) {
+            this.macroBytecodeLength.textContent = `${result.byteLength} Byte${result.byteLength === 1 ? '' : 's'}`;
+        }
+        if (this.macroBytecodeHex) {
+            this.macroBytecodeHex.textContent = result.hex;
+        }
+
+        if (this.macroCompilerStatus) {
+            if (result.success) {
+                this.macroCompilerStatus.textContent = 'Syntax Valid';
+                this.macroCompilerStatus.className = 'macro-compiler-status status-valid';
+            } else {
+                this.macroCompilerStatus.textContent = result.errors[0] || 'Compile Error';
+                this.macroCompilerStatus.className = 'macro-compiler-status status-error';
+            }
+        }
+
+        return result;
+    }
+
+    applyMacroAssignment() {
+        const comp = this.updateMacroCompilation();
+        if (!comp || !comp.success) {
+            this.showToast(comp ? comp.errors[0] : 'Please write a valid macro script first', 'error');
+            return;
+        }
+
+        const targetBtn = this.physicalButtons.find(b => b.id === this.selectedButtonId);
+        if (!targetBtn) return;
+
+        const macroPage = (this.device && this.device.deviceInfo && this.device.deviceInfo.name.includes('G305')) ? 0x02 : 0x06;
+
+        targetBtn.defaultAction = {
+            behavior: 0x00, // BUTTON_BEHAVIOR.EXECUTE_MACRO
+            type: 'macro',
+            value: macroPage,
+            page: macroPage,
+            offset: 0x0000,
+            script: this.macroScriptInput.value,
+            bytecode: comp.bytecode,
+            label: `Macro (Sector 0x0${macroPage})`
+        };
+
+        if (this.selectedButtonBadge) {
+            this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
+        }
+        this.renderPhysicalButtons();
+        this.showToast(`Assigned Macro (${comp.byteLength}B, ${comp.instructionCount} ops) to ${targetBtn.name}`, 'success');
+    }
+
+    async burnMacroToFlash() {
+        if (!this.device.isConnected) {
+            this.showToast('Please connect peripheral to flash macro bytecode to EEPROM', 'error');
+            return;
+        }
+
+        const comp = this.updateMacroCompilation();
+        if (!comp || !comp.success) {
+            this.showToast(comp ? comp.errors[0] : 'Fix macro syntax errors before flashing', 'error');
+            return;
+        }
+
+        const macroPage = this.device.deviceInfo.name.includes('G305') ? 2 : 6;
+
+        try {
+            this.showToast(`Flashing ${comp.byteLength}B macro bytecode to Sector 0x0${macroPage}...`, 'info');
+            await this.device.writeMacro(comp.bytecode, macroPage);
+            this.showToast(`⚡ Macro bytecode successfully written & committed to Sector 0x0${macroPage}!`, 'success');
+        } catch (err) {
+            console.error('Error flashing macro:', err);
+            this.showToast(`Failed to burn macro to flash: ${err.message}`, 'error');
+        }
+    }
+
     applyActionAssignment() {
         const activeCatTab = document.querySelector('.action-cat-tab.active');
         const cat = activeCatTab ? activeCatTab.dataset.cat : 'mouse';
@@ -1203,7 +1359,10 @@ class AppController {
 
         let actionObj = null;
 
-        if (cat === 'keystroke') {
+        if (cat === 'macro') {
+            this.applyMacroAssignment();
+            return;
+        } else if (cat === 'keystroke') {
             if (!this.recordedKey) {
                 this.showToast('Please press a keyboard key first', 'error');
                 return;
@@ -1243,15 +1402,26 @@ class AppController {
 
         // Prepare 16-element remapping array
         const mapArray = new Array(16).fill(0);
+        let macroToBurn = null;
+
         for (let i = 0; i < this.physicalButtons.length && i < 16; i++) {
             const act = this.physicalButtons[i].defaultAction;
             mapArray[i] = act.value || (i + 1);
+            if (act.type === 'macro' && act.bytecode) {
+                macroToBurn = act;
+            }
         }
 
         try {
+            // If any button has a macro assigned, burn its bytecode into the macro sector first
+            if (macroToBurn) {
+                const macroPage = macroToBurn.page || (this.device.deviceInfo.name.includes('G305') ? 2 : 6);
+                await this.device.writeMacro(macroToBurn.bytecode, macroPage);
+            }
+
             await this.device.setButtonRemappings(mapArray);
             await this.device.commitProfileToFlash(this.currentSlot);
-            this.showToast('Remappings committed to onboard EEPROM flash!', 'success');
+            this.showToast('Remappings and macros committed to onboard EEPROM flash!', 'success');
         } catch (err) {
             this.showToast(err.message, 'error');
         }

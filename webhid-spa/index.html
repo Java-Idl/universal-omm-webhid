@@ -456,6 +456,7 @@
                             <div class="action-category-tabs">
                                 <button class="action-cat-tab active" data-cat="mouse">Mouse Clicks</button>
                                 <button class="action-cat-tab" data-cat="keystroke">Keystroke</button>
+                                <button class="action-cat-tab" data-cat="macro">⚡ Multiline Macro</button>
                                 <button class="action-cat-tab" data-cat="dpi">DPI Controls</button>
                                 <button class="action-cat-tab" data-cat="media">Media Keys</button>
                                 <button class="action-cat-tab" data-cat="profile">Profiles</button>
@@ -489,6 +490,70 @@
                                         <label class="checkbox-label"><input type="checkbox" id="modWin"> Windows / Cmd</label>
                                     </div>
                                     <div class="keystroke-preview" id="keystrokePreviewText">Assigned: None</div>
+                                </div>
+                            </div>
+
+                            <!-- Multiline Macro Actions (Hardware Bytecode Engine) -->
+                            <div class="action-pane" id="pane-macro">
+                                <div class="macro-editor-container">
+                                    <div class="macro-editor-header">
+                                        <div class="macro-header-title">
+                                            <span class="macro-badge">Sector 0x06 (256B Flash)</span>
+                                            <span class="macro-compiler-status status-valid" id="macroCompilerStatus">Syntax Valid</span>
+                                        </div>
+                                        <div class="macro-metrics">
+                                            <span class="macro-metric-chip" id="macroByteMetric">0 / 256 Bytes</span>
+                                            <span class="macro-metric-chip" id="macroInstrMetric">0 Ops</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Quick Macro Templates / Presets -->
+                                    <div class="macro-preset-row">
+                                        <span class="preset-label">Templates:</span>
+                                        <div class="preset-chips">
+                                            <button type="button" class="preset-chip" data-preset="run-cmd">Run Cmd</button>
+                                            <button type="button" class="preset-chip" data-preset="quick-paste">Paste & Enter</button>
+                                            <button type="button" class="preset-chip" data-preset="task-mgr">Task Manager</button>
+                                            <button type="button" class="preset-chip" data-preset="quick-save">Ctrl+S Save</button>
+                                            <button type="button" class="preset-chip" data-preset="rapid-burst">Key Burst</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Multiline Macro Scripting Bar -->
+                                    <div class="macro-textarea-wrapper">
+                                        <textarea id="macroScriptInput" class="macro-script-textarea" rows="8" spellcheck="false" placeholder="# Multiline Macro Script (one action per line):
+WIN R
+DELAY 150
+TYPE cmd
+DELAY 100
+ENTER"></textarea>
+                                    </div>
+
+                                    <!-- Quick Token Inserters -->
+                                    <div class="macro-quick-insert-bar">
+                                        <span class="insert-label">+ Insert:</span>
+                                        <button type="button" class="insert-btn" data-insert="DELAY 100&#10;">Delay 100ms</button>
+                                        <button type="button" class="insert-btn" data-insert="CTRL ">Ctrl</button>
+                                        <button type="button" class="insert-btn" data-insert="SHIFT ">Shift</button>
+                                        <button type="button" class="insert-btn" data-insert="ALT ">Alt</button>
+                                        <button type="button" class="insert-btn" data-insert="WIN ">Win</button>
+                                        <button type="button" class="insert-btn" data-insert="ENTER&#10;">Enter</button>
+                                        <button type="button" class="insert-btn" data-insert="TYPE Hello World&#10;">Type Text</button>
+                                    </div>
+
+                                    <!-- Live Compiled Bytecode Stream Inspector -->
+                                    <div class="macro-bytecode-inspector">
+                                        <div class="inspector-header">
+                                            <span>Compiled Bytecode (HID++ 2.0 Feature 0x8100):</span>
+                                            <span class="inspector-len" id="macroBytecodeLength">1 Byte</span>
+                                        </div>
+                                        <div class="bytecode-hex-view" id="macroBytecodeHex">FF</div>
+                                    </div>
+
+                                    <div class="macro-action-btn-row">
+                                        <button type="button" class="btn btn-primary btn-full" id="btnAssignMacro">Apply Macro to Selected Button</button>
+                                        <button type="button" class="btn btn-accent btn-full" id="btnBurnMacroFlash">⚡ Burn Macro Directly to Flash Sector</button>
+                                    </div>
                                 </div>
                             </div>
 

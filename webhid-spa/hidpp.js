@@ -801,6 +801,98 @@ export class HidppDevice {
         return res[4] === 0x00;
     }
 
+    /* -------------------------------------------------------------
+     * Sector / Flash Page Read & Write (Feature 0x8100)
+     * ------------------------------------------------------------- */
+    async readSector(pageId, pageSize = 256) {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (!featIdx) throw new Error('Onboard profiles feature (0x8100) not available.');
+
+        const buffer = new Uint8Array(pageSize);
+        for (let offset = 0; offset < pageSize; offset += 16) {
+            const res = await this.sendCommand(
+                featIdx,
+                0x05, // readPageChunk
+                [0x00, pageId & 0xFF, (offset >> 8) & 0xFF, offset & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                true
+            );
+            if (res && res.length >= 20) {
+                const chunkData = res.slice(4, 20);
+                buffer.set(chunkData, offset);
+            }
+        }
+        return buffer;
+    }
+
+    async writeSector(pageId, buffer, pageSize = 256) {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (!featIdx) throw new Error('Onboard profiles feature (0x8100) not available.');
+
+        if (buffer.length < pageSize) {
+            const padded = new Uint8Array(pageSize);
+            padded.set(buffer);
+            buffer = padded;
+        }
+
+        // 1. Start / Prepare Transaction (Function 0x06)
+        const prepPayload = [
+            0x00, // ROM flag
+            pageId & 0xFF,
+            0x00, // offset Hi
+            0x00, // offset Lo
+            pageSize === 256 ? 0x01 : 0x00,
+            pageSize === 256 ? 0x00 : 0xFF,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ];
+        await this.sendCommand(featIdx, 0x06, prepPayload, true, 1200);
+
+        // 2. Transfer 16-byte chunks (Function 0x07)
+        for (let start = 0; start < pageSize; start += 16) {
+            const chunk = Array.from(buffer.slice(start, start + 16));
+            while (chunk.length < 16) chunk.push(0x00);
+            await this.sendCommand(featIdx, 0x07, chunk, true, 1200);
+        }
+
+        // 3. Finalize Transaction (Function 0x08)
+        await this.sendCommand(featIdx, 0x08, [0x00, 0x00, 0x00], false, 1200);
+
+        // 4. Commit to Non-Volatile Flash (Function 0x0C)
+        try {
+            await this.commitProfileToFlash(pageId);
+        } catch (e) {
+            console.warn('Sector commit acknowledgment skipped/tolerated:', e.message);
+        }
+
+        return true;
+    }
+
+    async writeMacro(macroBytecode, pageId = 6) {
+        const pageSize = this.deviceInfo.name.includes('G305') ? 240 : 256;
+        if (macroBytecode.length > pageSize) {
+            throw new Error(`Macro size (${macroBytecode.length} bytes) exceeds page capacity (${pageSize} bytes).`);
+        }
+
+        const sectorBuffer = new Uint8Array(pageSize);
+        sectorBuffer.set(macroBytecode, 0);
+
+        // Ensure macro end marker 0xFF is present
+        if (sectorBuffer[macroBytecode.length - 1] !== 0xFF) {
+            sectorBuffer[macroBytecode.length] = 0xFF;
+        }
+
+        // Calculate and embed CRC-CCITT at sector tail (last 2 bytes)
+        const crc = crcCcitt(sectorBuffer, pageSize - 2);
+        sectorBuffer[pageSize - 2] = (crc >> 8) & 0xFF;
+        sectorBuffer[pageSize - 1] = crc & 0xFF;
+
+        // Ensure Onboard Mode is active before writing
+        try {
+            await this.setOnboardMode(1);
+        } catch (e) {}
+
+        return await this.writeSector(pageId, sectorBuffer, pageSize);
+    }
+
     async disconnect() {
         await this.stopButtonSpy();
         if (this.writeDevice) {
@@ -817,3 +909,255 @@ export class HidppDevice {
         this.pendingRequests.clear();
     }
 }
+
+/* -------------------------------------------------------------
+ * HID Scancode Tables & Multiline Macro Compiler
+ * ------------------------------------------------------------- */
+export const HID_MODIFIERS = {
+    CTRL: 0x01,
+    STRG: 0x01,
+    LCTRL: 0x01,
+    SHIFT: 0x02,
+    LSHIFT: 0x02,
+    ALT: 0x04,
+    LALT: 0x04,
+    WIN: 0x08,
+    WINDOWS: 0x08,
+    CMD: 0x08,
+    COMMAND: 0x08,
+    GUI: 0x08,
+    LGUI: 0x08,
+    RCTRL: 0x10,
+    RSTRG: 0x10,
+    RSHIFT: 0x20,
+    RALT: 0x40,
+    ALTGR: 0x40,
+    RWIN: 0x80,
+    RGUI: 0x80
+};
+
+export const HID_KEY_CODES = {
+    NONE: 0,
+    A: 4, B: 5, C: 6, D: 7, E: 8, F: 9, G: 10, H: 11, I: 12, J: 13,
+    K: 14, L: 15, M: 16, N: 17, O: 18, P: 19, Q: 20, R: 21, S: 22,
+    T: 23, U: 24, V: 25, W: 26, X: 27, Y: 28, Z: 29,
+    '1': 30, '2': 31, '3': 32, '4': 33, '5': 34, '6': 35, '7': 36, '8': 37, '9': 38, '0': 39,
+    ENTER: 40, RETURN: 40,
+    ESCAPE: 41, ESC: 41,
+    BACKSPACE: 42, BSPACE: 42,
+    TAB: 43,
+    SPACE: 44,
+    MINUS: 45, '-': 45,
+    EQUAL: 46, '=': 46,
+    LBRACKET: 47, '[': 47,
+    RBRACKET: 48, ']': 48,
+    BSLASH: 49, '\\': 49,
+    NONUS_HASH: 50, '#': 50,
+    SEMICOLON: 51, SCOLON: 51, ';': 51,
+    QUOTE: 52, "'": 52, '"': 52,
+    GRAVE: 53, '`': 53, '~': 53,
+    COMMA: 54, ',': 54,
+    DOT: 55, '.': 55,
+    SLASH: 56, '/': 56,
+    CAPSLOCK: 57, CAPS: 57,
+    F1: 58, F2: 59, F3: 60, F4: 61, F5: 62, F6: 63,
+    F7: 64, F8: 65, F9: 66, F10: 67, F11: 68, F12: 69,
+    PRINTSCREEN: 70, PRINT: 70, PSCREEN: 70,
+    SCROLLLOCK: 71,
+    PAUSE: 72,
+    INSERT: 73,
+    HOME: 74,
+    PAGEUP: 75, PGUP: 75,
+    DELETE: 76, DEL: 76,
+    END: 77,
+    PAGEDOWN: 78, PGDOWN: 78,
+    RIGHT: 79,
+    LEFT: 80,
+    DOWN: 81,
+    UP: 82,
+    NUMLOCK: 83,
+    KP_SLASH: 84, KP_ASTERISK: 85, KP_MINUS: 86, KP_PLUS: 87, KP_ENTER: 88,
+    KP_1: 89, KP_2: 90, KP_3: 91, KP_4: 92, KP_5: 93, KP_6: 94, KP_7: 95, KP_8: 96, KP_9: 97, KP_0: 98,
+    KP_DOT: 99,
+    APPLICATION: 101, APP: 101, MENU: 101,
+    MUTE: 127, VOLUMEUP: 128, VOLUMEDOWN: 129
+};
+
+export function crcCcitt(data, length) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < length; i++) {
+        const temp = (crc >> 8) ^ data[i];
+        crc = (crc << 8) & 0xFFFF;
+        let quick = temp ^ (temp >> 4);
+        crc ^= quick;
+        quick = (crc << 5) & 0xFFFF;
+        crc ^= quick;
+        quick = (crc << 7) & 0xFFFF;
+        crc ^= quick;
+    }
+    return crc;
+}
+
+export function compileMacroScript(scriptText, maxBytes = 256) {
+    const bytes = [];
+    const lines = scriptText.split('\n');
+    const errors = [];
+    let lineNum = 0;
+    let instructionCount = 0;
+
+    for (let line of lines) {
+        lineNum++;
+        line = line.trim();
+        if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+        // 1. Text typing helper: TYPE <text> or STRING <text>
+        if (/^(TYPE|STRING)\s+/i.test(line)) {
+            const textToType = line.replace(/^(TYPE|STRING)\s+/i, '');
+            for (let char of textToType) {
+                const upper = char.toUpperCase();
+                let mod = 0x00;
+                let keycode = 0;
+
+                if (char >= 'A' && char <= 'Z') {
+                    mod = 0x02; // Shift
+                    keycode = upper.charCodeAt(0) - 'A'.charCodeAt(0) + 4;
+                } else if (char >= 'a' && char <= 'z') {
+                    keycode = upper.charCodeAt(0) - 'A'.charCodeAt(0) + 4;
+                } else if (char >= '1' && char <= '9') {
+                    keycode = char.charCodeAt(0) - '1'.charCodeAt(0) + 30;
+                } else if (char === '0') {
+                    keycode = 39;
+                } else if (char === ' ') {
+                    keycode = 44;
+                } else if (char === '.') {
+                    keycode = 55;
+                } else if (char === ',') {
+                    keycode = 54;
+                } else if (char === '-') {
+                    keycode = 45;
+                } else if (char === '_') {
+                    mod = 0x02; keycode = 45;
+                } else if (char === '/') {
+                    keycode = 56;
+                } else if (char === ':') {
+                    mod = 0x02; keycode = 51;
+                } else {
+                    keycode = HID_KEY_CODES[upper] || 0;
+                }
+
+                if (keycode > 0) {
+                    bytes.push(0x43, mod, keycode); // Key Down
+                    bytes.push(0x40, 0x00, 0x14);   // 20ms debounce
+                    bytes.push(0x44, mod, keycode); // Key Up
+                    bytes.push(0x40, 0x00, 0x14);   // 20ms debounce
+                    instructionCount++;
+                }
+            }
+            continue;
+        }
+
+        // 2. Delay / Wait: DELAY <ms> or WAIT <ms> or SLEEP <ms>
+        if (/^(DELAY|WAIT|SLEEP)\b/i.test(line)) {
+            const parts = line.split(/\s+/);
+            const ms = parseInt(parts[1], 10) || 100;
+            const clampedMs = Math.min(Math.max(ms, 1), 65535);
+            const hi = (clampedMs >> 8) & 0xFF;
+            const lo = clampedMs & 0xFF;
+            bytes.push(0x40, hi, lo);
+            instructionCount++;
+            continue;
+        }
+
+        // 3. Raw Down / Up commands: DOWN <mod/key> or UP <mod/key>
+        if (/^(DOWN|PRESS)\s+/i.test(line)) {
+            const target = line.replace(/^(DOWN|PRESS)\s+/i, '').trim().toUpperCase();
+            if (target in HID_MODIFIERS) {
+                bytes.push(0x43, HID_MODIFIERS[target], 0x00);
+            } else if (target in HID_KEY_CODES) {
+                bytes.push(0x43, 0x00, HID_KEY_CODES[target]);
+            } else {
+                errors.push(`Line ${lineNum}: Unknown key or modifier "${target}" for DOWN.`);
+            }
+            instructionCount++;
+            continue;
+        }
+
+        if (/^(UP|RELEASE)\s+/i.test(line)) {
+            const target = line.replace(/^(UP|RELEASE)\s+/i, '').trim().toUpperCase();
+            if (target in HID_MODIFIERS) {
+                bytes.push(0x44, HID_MODIFIERS[target], 0x00);
+            } else if (target in HID_KEY_CODES) {
+                bytes.push(0x44, 0x00, HID_KEY_CODES[target]);
+            } else {
+                errors.push(`Line ${lineNum}: Unknown key or modifier "${target}" for UP.`);
+            }
+            instructionCount++;
+            continue;
+        }
+
+        // 4. Key Chords / Combos: [MODIFIER(S)...] [KEY]
+        const tokens = line.split(/\s+/);
+        let modMask = 0x00;
+        let keyToken = null;
+
+        for (const token of tokens) {
+            const tok = token.toUpperCase();
+            if (tok in HID_MODIFIERS) {
+                modMask |= HID_MODIFIERS[tok];
+            } else if (tok in HID_KEY_CODES || /^[A-Z0-9]$/i.test(tok)) {
+                keyToken = tok;
+            } else {
+                errors.push(`Line ${lineNum}: Unrecognized token "${token}".`);
+            }
+        }
+
+        let keyCode = 0;
+        if (keyToken) {
+            if (keyToken in HID_KEY_CODES) {
+                keyCode = HID_KEY_CODES[keyToken];
+            } else if (keyToken.length === 1 && keyToken >= 'A' && keyToken <= 'Z') {
+                keyCode = keyToken.charCodeAt(0) - 'A'.charCodeAt(0) + 4;
+            } else if (keyToken.length === 1 && keyToken >= '0' && keyToken <= '9') {
+                keyCode = keyToken === '0' ? 39 : (keyToken.charCodeAt(0) - '1'.charCodeAt(0) + 30);
+            }
+        }
+
+        if (modMask > 0 && keyCode === 0) {
+            // Modifier only tap
+            bytes.push(0x43, modMask, 0x00);
+            bytes.push(0x40, 0x00, 0x20); // 32ms tap
+            bytes.push(0x44, modMask, 0x00);
+            instructionCount++;
+        } else if (keyCode > 0) {
+            // Key press with optional modifiers
+            bytes.push(0x43, modMask, keyCode);
+            bytes.push(0x40, 0x00, 0x28); // 40ms press
+            bytes.push(0x44, modMask, keyCode);
+            instructionCount++;
+        } else if (!errors.length) {
+            errors.push(`Line ${lineNum}: Missing valid key in chord.`);
+        }
+    }
+
+    // Always append Macro End sentinel
+    bytes.push(0xFF);
+
+    const bytecode = new Uint8Array(bytes);
+    const hex = Array.from(bytecode).map(b => b.toString(16).padStart(2, '0')).join(' ');
+
+    const exceedsCapacity = bytecode.length > maxBytes;
+    if (exceedsCapacity) {
+        errors.push(`Compiled macro is ${bytecode.length} bytes, exceeding page maximum (${maxBytes} bytes).`);
+    }
+
+    return {
+        success: errors.length === 0,
+        bytecode,
+        hex,
+        byteLength: bytecode.length,
+        maxBytes,
+        instructionCount,
+        errors
+    };
+}
+
