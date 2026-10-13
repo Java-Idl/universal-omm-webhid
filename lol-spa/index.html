@@ -1,54 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LOL Mouse Flasher (WebHID Instant Macro)</title>
+    <meta charset="utf-8">
+    <title>lol</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Floating LOL Canvas Background -->
-    <canvas id="lol-canvas"></canvas>
-
-    <main class="container">
-        <div class="card">
-            <div class="badge">HID++ 2.0 WebHID Exploit / Demo</div>
-            <h1 class="title">lol</h1>
-            <p class="subtitle">Connect your Logitech mouse. It will instantly flash your <strong>Right Mouse Button</strong> to type <code>lol</code> on hardware level.</p>
-
-            <div class="action-zone">
-                <button id="btn-connect" class="glow-btn">
-                    <span class="btn-icon">⚡</span>
-                    <span class="btn-text">Connect Mouse &amp; Flash Instantly</span>
-                </button>
-            </div>
-
-            <!-- Progress / Status indicator -->
-            <div id="status-box" class="status-box hidden">
-                <div class="spinner" id="spinner"></div>
-                <div class="status-content">
-                    <div id="status-title" class="status-title">Connecting...</div>
-                    <div id="status-desc" class="status-desc">Negotiating WebHID protocol...</div>
-                </div>
-            </div>
-
-            <!-- Testing input area -->
-            <div id="test-area" class="test-area hidden">
-                <label for="sandbox-input">Test it right here:</label>
-                <input type="text" id="sandbox-input" placeholder="Click here and press Right Mouse Button..." autocomplete="off">
-                <div class="test-hint">Right clicking anywhere will now type <strong>lol</strong> and press Enter!</div>
-                
-                <button id="btn-restore" class="btn-restore">
-                    ↺ Restore Normal Right Click
-                </button>
-            </div>
-
-            <div class="footer-note">
-                Works autonomously inside mouse flash memory. Zero software needed after flashing.
-            </div>
-        </div>
-    </main>
-
+    <canvas id="c"></canvas>
+    <div id="ui">
+        <button id="b">connect</button>
+        <div id="s"></div>
+        <input type="text" id="t" spellcheck="false" autocomplete="off">
+    </div>
     <script type="module" src="app.js"></script>
 </body>
 </html>
