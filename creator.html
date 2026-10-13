@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOL-SPA index.html Creator & Macro Compiler</title>
+    <style>
+        :root {
+            --bg: #0c0d12;
+            --panel: #161822;
+            --panel-border: #252838;
+            --accent: #ff2a5f;
+            --accent-cyan: #00f0ff;
+            --accent-green: #00ff66;
+            --text: #eef1f8;
+            --text-dim: #7f8a9e;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .header {
+            max-width: 1200px;
+            margin: 0 auto 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 16px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-family: monospace;
+            color: var(--accent-cyan);
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: bold;
+            font-family: monospace;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #232738;
+            color: var(--text-dim);
+        }
+
+        .badge.ok { background: rgba(0, 255, 102, 0.15); color: var(--accent-green); }
+        .badge.err { background: rgba(255, 42, 95, 0.15); color: var(--accent); }
+
+        /* Macro editor */
+        textarea {
+            width: 100%;
+            height: 220px;
+            background: #090a0e;
+            border: 1px solid #282c3f;
+            border-radius: 6px;
+            padding: 12px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        /* Cheatsheet chips */
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .chip {
+            background: #1f2333;
+            border: 1px solid #2d334a;
+            color: #c0c8db;
+            font-size: 11px;
+            font-family: monospace;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .chip:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .cheatsheet-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .cheatsheet-table th {
+            text-align: left;
+            padding: 6px;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .cheatsheet-table td {
+            padding: 6px;
+            border-bottom: 1px solid #1c1f2b;
+        }
+
+        .cheatsheet-table code {
+            color: var(--accent-cyan);
+        }
+
+        /* Controls */
+        .controls-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            font-family: monospace;
+        }
+
+        select, input[type="text"] {
+            width: 100%;
+            background: #090a0e;
+            border: 1px solid #282c3f;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 12px;
+            outline: none;
+        }
+
+        select:focus, input[type="text"]:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        /* Action buttons */
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #ff104a;
+        }
+
+        .btn-secondary {
+            background: #202436;
+            color: #fff;
+            border: 1px solid #2f354f;
+        }
+
+        .btn-secondary:hover {
+            background: #2a3048;
+        }
+
+        /* Code output preview */
+        .hex-preview {
+            background: #090a0e;
+            border: 1px solid #282c3f;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #8fa0c0;
+            max-height: 90px;
+            overflow-y: auto;
+            word-break: break-all;
+        }
+
+        .status-msg {
+            font-size: 12px;
+            font-family: monospace;
+            padding: 8px 12px;
+            border-radius: 4px;
+            background: #11141c;
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+        }
+
+        .status-msg.ok { border-color: rgba(0, 255, 102, 0.3); color: var(--accent-green); }
+        .status-msg.err { border-color: rgba(255, 42, 95, 0.3); color: var(--accent); }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <h1>LOL-SPA index.html Creator</h1>
+            <p>Compile custom multiline macros directly into a standalone single-file index.html for Cloudflare deployment.</p>
+        </div>
+        <div id="stat-badge" class="badge ok">Compiled: 46 / 253 bytes</div>
+    </div>
+
+    <div class="grid">
+        <!-- Left Column: Macro Editor & Options -->
+        <div class="card">
+            <div class="card-title">
+                <span>1. Multiline Macro Script</span>
+                <span class="badge" id="line-count">2 lines</span>
+            </div>
+
+            <textarea id="macro-input" spellcheck="false">STRING lol
+ENTER</textarea>
+
+            <div class="chips">
+                <span class="chip" data-insert="STRING ">+ STRING</span>
+                <span class="chip" data-insert="DELAY 200">+ DELAY 200</span>
+                <span class="chip" data-insert="ENTER">+ ENTER</span>
+                <span class="chip" data-insert="TAB">+ TAB</span>
+                <span class="chip" data-insert="SPACE">+ SPACE</span>
+                <span class="chip" data-insert="CTRL C">+ CTRL C</span>
+                <span class="chip" data-insert="CTRL V">+ CTRL V</span>
+                <span class="chip" data-insert="WIN R">+ WIN R</span>
+                <span class="chip" data-insert="PRESS CTRL\nPRESS SHIFT\nPRESS ESC\nRELEASE ESC\nRELEASE SHIFT\nRELEASE CTRL">+ TASKMGR</span>
+            </div>
+
+            <div class="controls-row">
+                <div>
+                    <label for="target-btn">Target Mouse Button</label>
+                    <select id="target-btn">
+                        <option value="2" selected>Button 2: Secondary Click (Right Click)</option>
+                        <option value="3">Button 3: Middle Click</option>
+                        <option value="4">Button 4: Back Button</option>
+                        <option value="5">Button 5: Forward Button</option>
+                        <option value="1">Button 1: Left Click (Warning: Rebinds Primary)</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="floating-words">Floating Background Words</label>
+                    <input type="text" id="floating-words" value="lol, LOL, lmao, xD">
+                </div>
+            </div>
+
+            <div class="card-title" style="margin-top: 6px;">
+                <span>Compiled Bytecode Hex</span>
+            </div>
+            <div class="hex-preview" id="hex-box">43 00 0f 40 00 14 44 00 0f 40 00 14 43 00 12 40 00 14 44 00 12 40 00 14 43 00 0f 40 00 14 44 00 0f 40 00 14 43 00 28 40 00 28 44 00 28 ff</div>
+
+            <div class="actions">
+                <button class="btn btn-primary" id="btn-copy">📋 Copy Single-File index.html</button>
+                <button class="btn btn-secondary" id="btn-download">💾 Download index.html</button>
+            </div>
+            <div id="status-out" class="status-msg ok">Ready to copy or download.</div>
+        </div>
+
+        <!-- Right Column: Command Cheatsheet -->
+        <div class="card">
+            <div class="card-title">
+                <span>2. Available Commands Cheatsheet</span>
+                <span class="badge">HID++ 2.0 Spec</span>
+            </div>
+
+            <table class="cheatsheet-table">
+                <thead>
+                    <tr>
+                        <th>Command Syntax</th>
+                        <th>Description / Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>STRING &lt;text&gt;</code><br><code>TYPE &lt;text&gt;</code></td>
+                        <td>Types sequential text with auto 20ms debounce.<br><em>e.g. <code>STRING git commit -m "fix"</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>DELAY &lt;ms&gt;</code><br><code>WAIT &lt;ms&gt;</code></td>
+                        <td>Hardware timer pause in milliseconds (1–65535 ms).<br><em>e.g. <code>DELAY 250</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>ENTER</code>, <code>TAB</code>, <code>SPACE</code><br><code>ESC</code>, <code>BACKSPACE</code></td>
+                        <td>Taps the key with automatic press and release.<br><em>e.g. <code>ENTER</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>[MOD] [KEY]</code></td>
+                        <td>Executes key chord combination.<br><em>e.g. <code>CTRL C</code>, <code>WIN R</code>, <code>ALT F4</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>PRESS &lt;key/mod&gt;</code><br><code>DOWN &lt;key/mod&gt;</code></td>
+                        <td>Holds key or modifier down without releasing.<br><em>e.g. <code>PRESS SHIFT</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>RELEASE &lt;key/mod&gt;</code><br><code>UP &lt;key/mod&gt;</code></td>
+                        <td>Releases a previously pressed key or modifier.<br><em>e.g. <code>RELEASE SHIFT</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code>CLICK &lt;1..5&gt;</code></td>
+                        <td>Simulates mouse click inside the macro sequence.<br><em>e.g. <code>CLICK 1</code></em></td>
+                    </tr>
+                    <tr>
+                        <td><code># &lt;comment&gt;</code></td>
+                        <td>Comments and blank lines are ignored.<br><em>e.g. <code># launch run dialog</code></em></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card-title" style="margin-top: 10px;">
+                <span>Supported Key & Modifier Identifiers</span>
+            </div>
+            <p style="font-size: 11px; color: var(--text-dim); line-height: 1.6;">
+                <strong>Modifiers:</strong> <code>CTRL</code>, <code>SHIFT</code>, <code>ALT</code>, <code>WIN</code>, <code>GUI</code>, <code>CMD</code>, <code>RCTRL</code>, <code>RSHIFT</code>, <code>RALT</code>.<br>
+                <strong>Keys:</strong> <code>A-Z</code>, <code>0-9</code>, <code>F1-F12</code>, <code>ENTER</code>, <code>ESC</code>, <code>BACKSPACE</code>, <code>TAB</code>, <code>SPACE</code>, <code>MINUS</code>, <code>EQUAL</code>, <code>LBRACKET</code>, <code>RBRACKET</code>, <code>BSLASH</code>, <code>SEMICOLON</code>, <code>QUOTE</code>, <code>COMMA</code>, <code>DOT</code>, <code>SLASH</code>, <code>CAPSLOCK</code>, <code>HOME</code>, <code>END</code>, <code>PAGEUP</code>, <code>PAGEDOWN</code>, <code>UP</code>, <code>DOWN</code>, <code>LEFT</code>, <code>RIGHT</code>, <code>DELETE</code>, <code>INSERT</code>, <code>PRINTSCREEN</code>.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        /* --- HID Scancode Tables & Compiler --- */
+        const HID_MODIFIERS = {
+            CTRL: 0x01, STRG: 0x01, LCTRL: 0x01,
+            SHIFT: 0x02, LSHIFT: 0x02,
+            ALT: 0x04, LALT: 0x04,
+            WIN: 0x08, WINDOWS: 0x08, CMD: 0x08, COMMAND: 0x08, GUI: 0x08, LGUI: 0x08,
+            RCTRL: 0x10, RSTRG: 0x10,
+            RSHIFT: 0x20,
+            RALT: 0x40, ALTGR: 0x40,
+            RWIN: 0x80, RGUI: 0x80
+        };
+
+        const HID_KEY_CODES = {
+            NONE: 0,
+            A: 4, B: 5, C: 6, D: 7, E: 8, F: 9, G: 10, H: 11, I: 12, J: 13,
+            K: 14, L: 15, M: 16, N: 17, O: 18, P: 19, Q: 20, R: 21, S: 22,
+            T: 23, U: 24, V: 25, W: 26, X: 27, Y: 28, Z: 29,
+            '1': 30, '2': 31, '3': 32, '4': 33, '5': 34, '6': 35, '7': 36, '8': 37, '9': 38, '0': 39,
+            ENTER: 40, RETURN: 40, ESCAPE: 41, ESC: 41, BACKSPACE: 42, BSPACE: 42,
+            TAB: 43, SPACE: 44, MINUS: 45, '-': 45, EQUAL: 46, '=': 46,
+            LBRACKET: 47, '[': 47, RBRACKET: 48, ']': 48, BSLASH: 49, '\\': 49,
+            SEMICOLON: 51, ';': 51, QUOTE: 52, "'": 52, '"': 52, GRAVE: 53, '`': 53,
+            COMMA: 54, ',': 54, DOT: 55, '.': 55, SLASH: 56, '/': 56, CAPSLOCK: 57,
+            F1: 58, F2: 59, F3: 60, F4: 61, F5: 62, F6: 63, F7: 64, F8: 65, F9: 66, F10: 67, F11: 68, F12: 69,
+            PRINTSCREEN: 70, PRINT: 70, SCROLLLOCK: 71, PAUSE: 72, INSERT: 73, HOME: 74, PAGEUP: 75,
+            DELETE: 76, DEL: 76, END: 77, PAGEDOWN: 78, RIGHT: 79, LEFT: 80, DOWN: 81, UP: 82
+        };
+
+        function compileMacroScript(scriptText, maxBytes = 253) {
+            const bytes = [];
+            const lines = scriptText.split('\n');
+            const errors = [];
+            let lineNum = 0;
+
+            for (let line of lines) {
+                lineNum++;
+                line = line.trim();
+                if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+                if (/^(TYPE|STRING)\s+/i.test(line)) {
+                    const str = line.replace(/^(TYPE|STRING)\s+/i, '');
+                    for (let char of str) {
+                        const upper = char.toUpperCase();
+                        let mod = 0x00;
+                        let key = 0;
+                        if (char >= 'A' && char <= 'Z') {
+                            mod = 0x02; key = upper.charCodeAt(0) - 'A'.charCodeAt(0) + 4;
+                        } else if (char >= 'a' && char <= 'z') {
+                            key = upper.charCodeAt(0) - 'A'.charCodeAt(0) + 4;
+                        } else if (char >= '1' && char <= '9') {
+                            key = char.charCodeAt(0) - '1'.charCodeAt(0) + 30;
+                        } else if (char === '0') {
+                            key = 39;
+                        } else if (char === ' ') {
+                            key = 44;
+                        } else if (char === '.') {
+                            key = 55;
+                        } else if (char === ',') {
+                            key = 54;
+                        } else if (char === '-') {
+                            key = 45;
+                        } else if (char === '_') {
+                            mod = 0x02; key = 45;
+                        } else if (char === '/') {
+                            key = 56;
+                        } else if (char === ':') {
+                            mod = 0x02; key = 51;
+                        } else {
+                            key = HID_KEY_CODES[upper] || 0;
+                        }
+                        if (key > 0) {
+                            bytes.push(0x43, mod, key);
+                            bytes.push(0x40, 0x00, 0x14);
+                            bytes.push(0x44, mod, key);
+                            bytes.push(0x40, 0x00, 0x14);
+                        }
+                    }
+                    continue;
+                }
+
+                if (/^(DELAY|WAIT|SLEEP)\b/i.test(line)) {
+                    const ms = parseInt(line.split(/\s+/)[1], 10) || 100;
+                    const clamped = Math.min(Math.max(ms, 1), 65535);
+                    bytes.push(0x40, (clamped >> 8) & 0xFF, clamped & 0xFF);
+                    continue;
+                }
+
+                if (/^(DOWN|PRESS)\s+/i.test(line)) {
+                    const target = line.replace(/^(DOWN|PRESS)\s+/i, '').trim().toUpperCase();
+                    if (target in HID_MODIFIERS) {
+                        bytes.push(0x43, HID_MODIFIERS[target], 0x00);
+                    } else if (target in HID_KEY_CODES) {
+                        bytes.push(0x43, 0x00, HID_KEY_CODES[target]);
+                    } else {
+                        errors.push(`Line ${lineNum}: Unknown key "${target}".`);
+                    }
+                    continue;
+                }
+
+                if (/^(UP|RELEASE)\s+/i.test(line)) {
+                    const target = line.replace(/^(UP|RELEASE)\s+/i, '').trim().toUpperCase();
+                    if (target in HID_MODIFIERS) {
+                        bytes.push(0x44, HID_MODIFIERS[target], 0x00);
+                    } else if (target in HID_KEY_CODES) {
+                        bytes.push(0x44, 0x00, HID_KEY_CODES[target]);
+                    } else {
+                        errors.push(`Line ${lineNum}: Unknown key "${target}".`);
+                    }
+                    continue;
+                }
+
+                if (/^CLICK\s+/i.test(line)) {
+                    const btn = parseInt(line.replace(/^CLICK\s+/i, ''), 10) || 1;
+                    bytes.push(0x80, btn & 0xFF);
+                    continue;
+                }
+
+                // Key chords / singles
+                const tokens = line.split(/\s+/);
+                let modMask = 0x00;
+                let keyToken = null;
+                for (const t of tokens) {
+                    const u = t.toUpperCase();
+                    if (u in HID_MODIFIERS) modMask |= HID_MODIFIERS[u];
+                    else if (u in HID_KEY_CODES) keyToken = u;
+                    else errors.push(`Line ${lineNum}: Unknown token "${t}".`);
+                }
+                const kCode = keyToken ? HID_KEY_CODES[keyToken] : 0;
+                if (kCode > 0 || modMask > 0) {
+                    bytes.push(0x43, modMask, kCode);
+                    bytes.push(0x40, 0x00, 0x28);
+                    bytes.push(0x44, modMask, kCode);
+                }
+            }
+
+            bytes.push(0xFF); // EOF sentinel
+            const bytecode = new Uint8Array(bytes);
+            const hex = Array.from(bytecode).map(b => b.toString(16).padStart(2, '0')).join(' ');
+
+            return {
+                success: errors.length === 0 && bytecode.length <= maxBytes,
+                bytecode,
+                hex,
+                len: bytecode.length,
+                maxBytes,
+                errors
+            };
+        }
+
+        /* --- UI Controller --- */
+        const macroInput = document.getElementById('macro-input');
+        const targetBtn = document.getElementById('target-btn');
+        const floatingWords = document.getElementById('floating-words');
+        const hexBox = document.getElementById('hex-box');
+        const statBadge = document.getElementById('stat-badge');
+        const lineCount = document.getElementById('line-count');
+        const statusOut = document.getElementById('status-out');
+        const btnCopy = document.getElementById('btn-copy');
+        const btnDownload = document.getElementById('btn-download');
+
+        let lastCompiled = null;
+
+        function updateCompiler() {
+            const lines = macroInput.value.split('\n').filter(l => l.trim().length > 0);
+            lineCount.textContent = `${lines.length} lines`;
+
+            const res = compileMacroScript(macroInput.value);
+            lastCompiled = res;
+
+            hexBox.textContent = res.hex || '(none)';
+
+            if (res.errors.length > 0) {
+                statBadge.className = 'badge err';
+                statBadge.textContent = res.errors[0];
+                statusOut.className = 'status-msg err';
+                statusOut.textContent = `Compile error: ${res.errors.join('; ')}`;
+            } else if (res.len > res.maxBytes) {
+                statBadge.className = 'badge err';
+                statBadge.textContent = `Exceeded: ${res.len} / ${res.maxBytes} bytes`;
+                statusOut.className = 'status-msg err';
+                statusOut.textContent = `Macro size (${res.len} bytes) exceeds sector capacity (253 bytes).`;
+            } else {
+                statBadge.className = 'badge ok';
+                statBadge.textContent = `Compiled: ${res.len} / ${res.maxBytes} bytes`;
+                statusOut.className = 'status-msg ok';
+                statusOut.textContent = `Valid bytecode (${res.len} bytes). Ready to copy or download index.html.`;
+            }
+        }
+
+        macroInput.addEventListener('input', updateCompiler);
+        targetBtn.addEventListener('change', updateCompiler);
+        floatingWords.addEventListener('change', updateCompiler);
+
+        // Chip button click handlers
+        document.querySelectorAll('.chip').forEach(c => {
+            c.addEventListener('click', () => {
+                const text = c.getAttribute('data-insert');
+                const start = macroInput.selectionStart;
+                const end = macroInput.selectionEnd;
+                const val = macroInput.value;
+                macroInput.value = val.substring(0, start) + (start > 0 && val[start - 1] !== '\n' ? '\n' : '') + text + '\n' + val.substring(end);
+                macroInput.focus();
+                updateCompiler();
+            });
+        });
+
+        /* --- Standalone Template Generator --- */
+        function generateStandaloneHtml() {
+            if (!lastCompiled || !lastCompiled.success) {
+                throw new Error('Please resolve macro errors first.');
+            }
+
+            const targetBtnId = parseInt(targetBtn.value, 10) || 2;
+            const wordsList = floatingWords.value.split(',').map(s => s.trim()).filter(Boolean);
+            const wordsJson = JSON.stringify(wordsList.length > 0 ? wordsList : ['lol', 'LOL', 'lmao']);
+            const hexArray = Array.from(lastCompiled.bytecode).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ');
+
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>lol</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d0d0d; color: #eee; font-family: monospace; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        #c { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
+        #ui { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 12px; width: 320px; }
+        #b { background: #ff2a5f; color: #fff; border: none; padding: 12px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        #b:hover { background: #ff104a; }
+        #b:disabled { opacity: 0.5; cursor: not-allowed; }
+        #s { font-size: 12px; color: #888; min-height: 16px; }
+        #s.ok { color: #00ff66; }
+        #s.err { color: #ff3333; }
+        #t { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 10px; font-size: 14px; font-family: monospace; outline: none; border-radius: 4px; }
+        #t:focus { border-color: #ff2a5f; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <div id="ui">
+        <button id="b">connect</button>
+        <div id="s"></div>
+        <input type="text" id="t" spellcheck="false" autocomplete="off" placeholder="test right click here...">
+    </div>
+
+    <script>
+        const c = document.getElementById('c'), ctx = c.getContext('2d');
+        let w = c.width = window.innerWidth, h = c.height = window.innerHeight;
+        window.onresize = () => { w = c.width = window.innerWidth; h = c.height = window.innerHeight; };
+
+        const colors = ['#00ff66', '#ff2a5f', '#00f0ff', '#ffff00', '#ffffff', '#ff8800'];
+        const words = ${wordsJson};
+        const lols = Array.from({ length: 32 }, () => ({
+            x: Math.random() * w, y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
+            vy: (Math.random() - 0.5) * 8 + (Math.random() > 0.5 ? 2.5 : -2.5),
+            size: Math.floor(Math.random() * 24 + 14),
+            color: colors[Math.floor(Math.random() * colors.length)],
+            text: words[Math.floor(Math.random() * words.length)]
+        }));
+
+        function draw() {
+            ctx.clearRect(0, 0, w, h);
+            for (const p of lols) {
+                p.x += p.vx; p.y += p.vy;
+                if (p.x < 0 || p.x > w) p.vx *= -1;
+                if (p.y < 0 || p.y > h) p.vy *= -1;
+                ctx.font = \`bold \${p.size}px monospace\`;
+                ctx.fillStyle = p.color;
+                ctx.fillText(p.text, p.x, p.y);
+            }
+            requestAnimationFrame(draw);
+        }
+        draw();
+
+        function crcCcitt(data, length = 253) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < length; i++) {
+                crc ^= (data[i] << 8);
+                for (let j = 0; j < 8; j++) {
+                    crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+                    crc &= 0xFFFF;
+                }
+            }
+            return crc;
+        }
+
+        const DEFAULT_G502_PROFILE_SECTOR = new Uint8Array([
+            0x01, 0x01, 0x00, 0xB0, 0x04, 0x60, 0x09, 0x80, 0x0C, 0x00, 0x19, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+            0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0x80, 0x01, 0x00, 0x01, 0x80, 0x01, 0x00, 0x02, 0x80, 0x01, 0x00, 0x04, 0x80, 0x01, 0x00, 0x08,
+            0x80, 0x01, 0x00, 0x10, 0x80, 0x02, 0x08, 0x07, 0x90, 0x04, 0xFF, 0xFF, 0x90, 0x07, 0xFF, 0xFF,
+            0x90, 0x0A, 0xFF, 0xFF, 0x90, 0x02, 0xFF, 0xFF, 0x90, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x13, 0x88, 0x64, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x13, 0x88, 0x64, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3A, 0x43, 0xFF
+        ]);
+
+        function buildProfileSector(targetBtnId = ${targetBtnId}) {
+            const sector = new Uint8Array(DEFAULT_G502_PROFILE_SECTOR);
+            const offset = 32 + (targetBtnId - 1) * 4;
+            sector[offset + 0] = 0x00; // BUTTON_BEHAVIOR.EXECUTE_MACRO
+            sector[offset + 1] = 0x06; // Sector 6
+            sector[offset + 2] = 0x00;
+            sector[offset + 3] = 0x00;
+            const crc = crcCcitt(sector, 253);
+            sector[253] = (crc >> 8) & 0xFF;
+            sector[254] = crc & 0xFF;
+            sector[255] = 0xFF;
+            return sector;
+        }
+
+        const TARGET_BYTECODE = new Uint8Array([${hexArray}]);
+
+        class HIDPP {
+            constructor() {
+                this.writeDevice = null;
+                this.readDevice = null;
+                this.pending = new Map();
+                this.featMap = new Map();
+                this.swId = 0x01;
+            }
+
+            async requestAndOpen() {
+                if (!navigator.hid) throw new Error('WebHID unavailable. Must be on HTTPS.');
+                const requested = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x046D }] });
+                if (!requested || requested.length === 0) throw new Error('No device selected');
+
+                const allGranted = await navigator.hid.getDevices();
+                const logi = allGranted.filter(d => d.vendorId === 0x046D);
+                const devList = logi.length > 0 ? logi : requested;
+
+                for (const dev of devList) {
+                    if (!dev.opened) await dev.open();
+                    for (const col of dev.collections) {
+                        if (col.usagePage === 0xFF00) {
+                            if (col.usage === 0x0001) this.writeDevice = dev;
+                            if (col.usage === 0x0002) this.readDevice = dev;
+                        }
+                    }
+                }
+                if (!this.writeDevice && devList.length > 0) this.writeDevice = devList[0];
+                if (!this.readDevice && devList.length > 0) this.readDevice = devList[0];
+
+                const unique = new Set([this.writeDevice, this.readDevice].filter(Boolean));
+                for (const d of unique) {
+                    d.addEventListener('inputreport', e => this.handleReport(e));
+                }
+                await this.resolveFeatures();
+            }
+
+            handleReport(e) {
+                const u8 = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+                if (u8.length < 3) return;
+                const devIdx = u8[0], featIdx = u8[1], fnSw = u8[2];
+                const fnId = (fnSw >> 4) & 0x0F, swId = fnSw & 0x0F;
+
+                if (featIdx === 0xFF && u8.length >= 5) {
+                    const errFeat = u8[2], errFn = (u8[3] >> 4) & 0x0F, errSw = u8[3] & 0x0F;
+                    const key = \`\${errFeat}_\${errFn}_\${errSw}\`, wildcard = \`\${errFeat}_\${errFn}\`;
+                    const target = this.pending.get(key) || this.pending.get(wildcard);
+                    if (target) {
+                        clearTimeout(target.timer);
+                        this.pending.delete(key); this.pending.delete(wildcard);
+                        target.reject(new Error(\`Hardware error 0x\${u8[4].toString(16)}\`));
+                    }
+                    return;
+                }
+
+                const key = \`\${featIdx}_\${fnId}_\${swId}\`, wildcard = \`\${featIdx}_\${fnId}\`;
+                const target = this.pending.get(key) || this.pending.get(wildcard);
+                if (target) {
+                    clearTimeout(target.timer);
+                    this.pending.delete(key); this.pending.delete(wildcard);
+                    target.resolve(u8);
+                }
+            }
+
+            async send(featIdx, fnId, payload = [], isLong = false, timeout = 1200) {
+                const swId = ((this.swId++) & 0x0F) || 0x01;
+                const reportId = isLong ? 0x11 : 0x10;
+                const len = isLong ? 19 : 6;
+                const data = new Uint8Array(len);
+                data[0] = 0xFF; data[1] = featIdx; data[2] = ((fnId & 0x0F) << 4) | (swId & 0x0F);
+                for (let i = 0; i < payload.length && (i + 3) < len; i++) data[3 + i] = payload[i];
+
+                const key = \`\${featIdx}_\${fnId}_\${swId}\`;
+                return new Promise(async (resolve, reject) => {
+                    const timer = setTimeout(() => {
+                        this.pending.delete(key);
+                        reject(new Error(\`Timeout Feat=0x\${featIdx.toString(16)} Fn=0x\${fnId.toString(16)}\`));
+                    }, timeout);
+                    this.pending.set(key, { resolve, reject, timer });
+
+                    const target = (isLong && this.readDevice) ? this.readDevice : (this.writeDevice || this.readDevice);
+                    try {
+                        await target.sendReport(reportId, data);
+                    } catch (e) {
+                        if (target !== this.writeDevice && this.writeDevice) {
+                            await this.writeDevice.sendReport(reportId, data);
+                        } else {
+                            clearTimeout(timer); this.pending.delete(key); reject(e);
+                        }
+                    }
+                });
+            }
+
+            async resolveFeatures() {
+                try {
+                    const res = await this.send(0x00, 0x00, [0x81, 0x00], false, 1000);
+                    if (res && res[3] > 0) this.featMap.set(0x8100, res[3]);
+                } catch (e) {}
+
+                if (!this.featMap.has(0x8100)) {
+                    for (let idx = 1; idx <= 25; idx++) {
+                        try {
+                            const res = await this.send(0x00, 0x01, [idx], false, 600);
+                            if (res && ((res[3] << 8) | res[4]) === 0x8100) {
+                                this.featMap.set(0x8100, idx); break;
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }
+
+            async writeSector(pageId, buffer) {
+                const feat = this.featMap.get(0x8100);
+                if (!feat) throw new Error('Feature 0x8100 not found on device');
+                const sec = new Uint8Array(256); sec.fill(0xFF); sec.set(buffer.slice(0, 256));
+                const crc = crcCcitt(sec, 253);
+                sec[253] = (crc >> 8) & 0xFF; sec[254] = crc & 0xFF; sec[255] = 0xFF;
+
+                await this.send(feat, 0x06, [0x00, pageId & 0xFF, 0, 0, 0, 0xFF, 0,0,0,0,0,0,0,0,0,0], true, 1200);
+                for (let i = 0; i < 256; i += 16) {
+                    await this.send(feat, 0x07, Array.from(sec.slice(i, i + 16)), true, 1200);
+                }
+                await this.send(feat, 0x08, [0, 0, 0], false, 1200);
+                return true;
+            }
+
+            async writeMacro(bytecode, pageId = 6) {
+                const sec = new Uint8Array(256); sec.fill(0xFF); sec.set(bytecode, 0);
+                return await this.writeSector(pageId, sec);
+            }
+            async setActiveProfile(slot = 1) {
+                const feat = this.featMap.get(0x8100);
+                if (feat) await this.send(feat, 0x03, [0x00, slot & 0xFF], false, 1000);
+            }
+            async commitProfile(slot = 1) {
+                const feat = this.featMap.get(0x8100);
+                if (feat) { try { await this.send(feat, 0x0C, [0x00, slot & 0xFF], false, 1000); } catch (e) {} }
+            }
+            async setOnboardMode(mode = 1) {
+                const feat = this.featMap.get(0x8100);
+                if (feat) await this.send(feat, 0x02, [mode & 0xFF], false, 1000);
+            }
+        }
+
+        const b = document.getElementById('b'), s = document.getElementById('s'), t = document.getElementById('t');
+        if (!navigator.hid) {
+            s.className = 'err'; s.textContent = 'WebHID unavailable. Must be on HTTPS.'; b.disabled = true;
+        }
+
+        b.onclick = async () => {
+            try {
+                b.disabled = true; s.className = ''; s.textContent = 'requesting device...';
+                const dev = new HIDPP();
+                await dev.requestAndOpen();
+
+                s.textContent = 'flashing macro to sector 6...';
+                await dev.writeMacro(TARGET_BYTECODE, 6);
+
+                s.textContent = 'remapping target button...';
+                const profile = buildProfileSector(${targetBtnId});
+                await dev.writeSector(1, profile);
+
+                s.textContent = 'activating profile...';
+                await dev.setActiveProfile(1);
+                await dev.commitProfile(1);
+                await dev.setOnboardMode(1);
+
+                s.className = 'ok'; s.textContent = 'flashed. test click in box'; b.textContent = 'flashed'; t.focus();
+            } catch (err) {
+                console.error(err); s.className = 'err'; s.textContent = err.message || 'failed';
+                b.disabled = false; b.textContent = 'retry';
+            }
+        };
+    <\/script>
+</body>
+</html>`;
+        }
+
+        btnCopy.addEventListener('click', async () => {
+            try {
+                const html = generateStandaloneHtml();
+                await navigator.clipboard.writeText(html);
+                statusOut.className = 'status-msg ok';
+                statusOut.textContent = '✓ Standalone index.html copied to clipboard! Paste into your Cloudflare Worker or file.';
+            } catch (err) {
+                statusOut.className = 'status-msg err';
+                statusOut.textContent = `Copy error: ${err.message}`;
+            }
+        });
+
+        btnDownload.addEventListener('click', () => {
+            try {
+                const html = generateStandaloneHtml();
+                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'index.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusOut.className = 'status-msg ok';
+                statusOut.textContent = '✓ Downloaded index.html! Ready to upload to Cloudflare.';
+            } catch (err) {
+                statusOut.className = 'status-msg err';
+                statusOut.textContent = `Download error: ${err.message}`;
+            }
+        });
+
+        updateCompiler();
+    </script>
+</body>
+</html>
