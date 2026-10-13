@@ -281,6 +281,37 @@ export class HidppDevice {
             this.parseAndEmitBattery(u8);
         }
 
+        // Check for HID++ 2.0 Error Packet: [devIdx, 0xFF, failedFeatIdx, failedFnSw, errorCode]
+        if (featIdx === 0xFF && u8.length >= 5) {
+            const errFeatIdx = u8[2];
+            const errFnSw = u8[3];
+            const errFnId = (errFnSw >> 4) & 0x0F;
+            const errSwId = errFnSw & 0x0F;
+            const errCode = u8[4];
+            const errReqKey = `${errFeatIdx}_${errFnId}_${errSwId}`;
+            const errWildcardKey = `${errFeatIdx}_${errFnId}`;
+
+            this.emitPacket('RX', reportId, devIdx, errFeatIdx, errFnId, errSwId, fullBytes, `HID++ Error 0x${errCode.toString(16).padStart(2,'0')}`);
+
+            const targetReq = this.pendingRequests.get(errReqKey) || this.pendingRequests.get(errWildcardKey);
+            if (targetReq) {
+                clearTimeout(targetReq.timer);
+                this.pendingRequests.delete(errReqKey);
+                this.pendingRequests.delete(errWildcardKey);
+                const errNames = {
+                    0x01: 'Unknown Error',
+                    0x02: 'Invalid Argument',
+                    0x03: 'Out of Range',
+                    0x04: 'Invalid Command',
+                    0x05: 'Busy / Locked',
+                    0x09: 'Resource Error'
+                };
+                const msg = errNames[errCode] || `Code 0x${errCode.toString(16).padStart(2, '0')}`;
+                targetReq.reject(new Error(`Hardware returned HID++ error: ${msg} on Feat=0x${errFeatIdx.toString(16)} Fn=0x${errFnId.toString(16)}`));
+                return;
+            }
+        }
+
         const reqKey = `${featIdx}_${fnId}_${swId}`;
         const wildcardKey = `${featIdx}_${fnId}`;
 
@@ -340,7 +371,15 @@ export class HidppDevice {
             try {
                 this.emitPacket('TX', reportId, this.deviceIndex, featIdx, fnId, swId, fullSendBytes, 'Host Command');
                 const targetDev = (isLong && this.readDevice) ? this.readDevice : (this.writeDevice || this.readDevice);
-                await targetDev.sendReport(reportId, data);
+                try {
+                    await targetDev.sendReport(reportId, data);
+                } catch (sendErr) {
+                    if (targetDev !== this.writeDevice && this.writeDevice) {
+                        await this.writeDevice.sendReport(reportId, data);
+                    } else {
+                        throw sendErr;
+                    }
+                }
             } catch (err) {
                 clearTimeout(timer);
                 this.pendingRequests.delete(reqKey);
@@ -783,22 +822,28 @@ export class HidppDevice {
         return 0;
     }
 
-    async setActiveProfile(sectorId) {
+    async setActiveProfile(slot = 1) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature not available.');
-        const secHi = (sectorId >> 8) & 0xFF;
-        const secLo = sectorId & 0xFF;
-        const res = await this.sendCommand(featIdx, 0x03, [secHi, secLo, 0x00]);
-        return res[4] === 0x00;
+        // Function 0x03: setActiveProfile(slot) - Short report [0x00, slot & 0xFF, 0x00]
+        const res = await this.sendCommand(featIdx, 0x03, [0x00, slot & 0xFF, 0x00], false, 1200);
+        return res && (res[4] === 0x00 || res[4] === (slot & 0xFF));
     }
 
-    async commitProfileToFlash(sectorId) {
+    async commitProfileToFlash(slot = 1) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature not available.');
-        const secHi = (sectorId >> 8) & 0xFF;
-        const secLo = sectorId & 0xFF;
-        const res = await this.sendCommand(featIdx, 0x0C, [secHi, secLo, 0x00]);
-        return res[4] === 0x00;
+        // Function 0x0C: commit_profile_to_flash - Short report [slot & 0xFF, 0x00, 0x00]
+        const res = await this.sendCommand(featIdx, 0x0C, [slot & 0xFF, 0x00, 0x00], false, 1200);
+        return res && (res[4] === 0x00 || res[4] === (slot & 0xFF));
+    }
+
+    async executeMacro(sector = 6, offset = 0) {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (!featIdx) throw new Error('Onboard profiles feature not available.');
+        // Function 0x05: execute_macro(sector, address)
+        const res = await this.sendCommand(featIdx, 0x05, [0x00, sector & 0xFF, (offset >> 8) & 0xFF, offset & 0xFF], false, 1000);
+        return res;
     }
 
     /* -------------------------------------------------------------
@@ -808,82 +853,66 @@ export class HidppDevice {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature (0x8100) not available.');
 
-        const buffer = new Uint8Array(pageSize);
-        for (let offset = 0; offset < pageSize; offset += 16) {
-            const res = await this.sendCommand(
-                featIdx,
-                0x05, // readPageChunk
-                [0x00, pageId & 0xFF, (offset >> 8) & 0xFF, offset & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                true
-            );
-            if (res && res.length >= 20) {
-                const chunkData = res.slice(4, 20);
-                buffer.set(chunkData, offset);
-            }
-        }
-        return buffer;
+        // Function 0x0B reads profile data
+        const res = await this.sendCommand(featIdx, 0x0B, [0x00, pageId & 0xFF, 0x00], false, 1000);
+        return res;
     }
 
     async writeSector(pageId, buffer, pageSize = 256) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) throw new Error('Onboard profiles feature (0x8100) not available.');
 
-        if (buffer.length < pageSize) {
-            const padded = new Uint8Array(pageSize);
-            padded.set(buffer);
-            buffer = padded;
-        }
+        const sectorBuffer = new Uint8Array(pageSize);
+        sectorBuffer.fill(0xFF);
+        sectorBuffer.set(buffer.slice(0, pageSize));
 
-        // 1. Start / Prepare Transaction (Function 0x06)
+        // Ensure CRC-CCITT (poly 0x1021, init 0xFFFF) across first 253 bytes is embedded at tail
+        const crc = crcCcitt(sectorBuffer, pageSize - 3);
+        sectorBuffer[pageSize - 3] = (crc >> 8) & 0xFF;
+        sectorBuffer[pageSize - 2] = crc & 0xFF;
+        sectorBuffer[pageSize - 1] = 0xFF;
+
+        // 1. Prepare Sector Transaction (Function 0x06)
+        // Wire packet: [0x11, 0xFF, featIdx, 0x6F, 0x00, pageId, 0x00, 0x00, 0x00, 0xFF, 0x00...]
         const prepPayload = [
             0x00, // ROM flag
             pageId & 0xFF,
             0x00, // offset Hi
             0x00, // offset Lo
-            pageSize === 256 ? 0x01 : 0x00,
-            pageSize === 256 ? 0x00 : 0xFF,
+            0x00, // length Hi
+            0xFF, // length Lo
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0
         ];
         await this.sendCommand(featIdx, 0x06, prepPayload, true, 1200);
 
         // 2. Transfer 16-byte chunks (Function 0x07)
         for (let start = 0; start < pageSize; start += 16) {
-            const chunk = Array.from(buffer.slice(start, start + 16));
-            while (chunk.length < 16) chunk.push(0x00);
+            const chunk = Array.from(sectorBuffer.slice(start, start + 16));
+            while (chunk.length < 16) chunk.push(0xFF);
             await this.sendCommand(featIdx, 0x07, chunk, true, 1200);
         }
 
-        // 3. Finalize Transaction (Function 0x08)
+        // 3. Finalize Sector Write (Function 0x08)
+        // Short report (0x10) to writeDevice
         await this.sendCommand(featIdx, 0x08, [0x00, 0x00, 0x00], false, 1200);
-
-        // 4. Commit to Non-Volatile Flash (Function 0x0C)
-        try {
-            await this.commitProfileToFlash(pageId);
-        } catch (e) {
-            console.warn('Sector commit acknowledgment skipped/tolerated:', e.message);
-        }
 
         return true;
     }
 
     async writeMacro(macroBytecode, pageId = 6) {
-        const pageSize = this.deviceInfo.name.includes('G305') ? 240 : 256;
-        if (macroBytecode.length > pageSize) {
-            throw new Error(`Macro size (${macroBytecode.length} bytes) exceeds page capacity (${pageSize} bytes).`);
+        const pageSize = 256;
+        if (macroBytecode.length > pageSize - 3) {
+            throw new Error(`Macro size (${macroBytecode.length} bytes) exceeds page capacity (${pageSize - 3} bytes).`);
         }
 
         const sectorBuffer = new Uint8Array(pageSize);
+        sectorBuffer.fill(0xFF);
         sectorBuffer.set(macroBytecode, 0);
 
         // Ensure macro end marker 0xFF is present
-        if (sectorBuffer[macroBytecode.length - 1] !== 0xFF) {
+        if (macroBytecode.length < pageSize && sectorBuffer[macroBytecode.length - 1] !== 0xFF) {
             sectorBuffer[macroBytecode.length] = 0xFF;
         }
-
-        // Calculate and embed CRC-CCITT at sector tail (last 2 bytes)
-        const crc = crcCcitt(sectorBuffer, pageSize - 2);
-        sectorBuffer[pageSize - 2] = (crc >> 8) & 0xFF;
-        sectorBuffer[pageSize - 1] = crc & 0xFF;
 
         // Ensure Onboard Mode is active before writing
         try {
@@ -983,19 +1012,76 @@ export const HID_KEY_CODES = {
     MUTE: 127, VOLUMEUP: 128, VOLUMEDOWN: 129
 };
 
-export function crcCcitt(data, length) {
+export function crcCcitt(data, length = 253) {
     let crc = 0xFFFF;
     for (let i = 0; i < length; i++) {
-        const temp = (crc >> 8) ^ data[i];
-        crc = (crc << 8) & 0xFFFF;
-        let quick = temp ^ (temp >> 4);
-        crc ^= quick;
-        quick = (crc << 5) & 0xFFFF;
-        crc ^= quick;
-        quick = (crc << 7) & 0xFFFF;
-        crc ^= quick;
+        const b = data[i];
+        crc ^= (b << 8);
+        for (let j = 0; j < 8; j++) {
+            if (crc & 0x8000) {
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+            } else {
+                crc = (crc << 1) & 0xFFFF;
+            }
+        }
     }
     return crc;
+}
+
+export const DEFAULT_G502_PROFILE_SECTOR = new Uint8Array([
+    0x01, 0x01, 0x00, 0xB0, 0x04, 0x60, 0x09, 0x80, 0x0C, 0x00, 0x19, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+    0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x80, 0x01, 0x00, 0x01, 0x80, 0x01, 0x00, 0x02, 0x80, 0x01, 0x00, 0x04, 0x80, 0x01, 0x00, 0x08,
+    0x80, 0x01, 0x00, 0x10, 0x80, 0x02, 0x08, 0x07, 0x90, 0x04, 0xFF, 0xFF, 0x90, 0x07, 0xFF, 0xFF,
+    0x90, 0x0A, 0xFF, 0xFF, 0x90, 0x02, 0xFF, 0xFF, 0x90, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x13, 0x88, 0x64, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x13, 0x88, 0x64, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3A, 0x43, 0xFF,
+]);
+
+export function buildProfileSector(buttonActions = [], baseSector = DEFAULT_G502_PROFILE_SECTOR) {
+    const sector = new Uint8Array(baseSector);
+    for (const btn of buttonActions) {
+        if (!btn || !btn.id || btn.id < 1 || btn.id > 11) continue;
+        const offset = 32 + (btn.id - 1) * 4;
+        const act = btn.defaultAction || btn.action || {};
+        if (act.type === 'macro') {
+            const page = act.page || 0x06;
+            const macroOffset = act.offset || 0;
+            sector[offset + 0] = 0x00; // BUTTON_BEHAVIOR.EXECUTE_MACRO
+            sector[offset + 1] = page & 0xFF;
+            sector[offset + 2] = (macroOffset >> 8) & 0xFF;
+            sector[offset + 3] = macroOffset & 0xFF;
+        } else if (act.type === 'mouse') {
+            sector[offset + 0] = 0x80;
+            sector[offset + 1] = 0x01;
+            sector[offset + 2] = 0x00;
+            sector[offset + 3] = (act.value || 1) & 0xFF;
+        } else if (act.type === 'key') {
+            sector[offset + 0] = 0x80;
+            sector[offset + 1] = 0x02;
+            sector[offset + 2] = (act.modifiers || 0) & 0xFF;
+            sector[offset + 3] = (act.value || 4) & 0xFF;
+        } else if (act.type === 'func') {
+            sector[offset + 0] = 0x90;
+            sector[offset + 1] = (act.value || 0) & 0xFF;
+            sector[offset + 2] = 0xFF;
+            sector[offset + 3] = 0xFF;
+        }
+    }
+    const crc = crcCcitt(sector, 253);
+    sector[253] = (crc >> 8) & 0xFF;
+    sector[254] = crc & 0xFF;
+    sector[255] = 0xFF;
+    return sector;
 }
 
 export function compileMacroScript(scriptText, maxBytes = 256) {

@@ -12,7 +12,8 @@ import {
     REMAPPING_OPCODES,
     FUNCTION_OPCODES,
     CONSUMER_KEYS,
-    compileMacroScript
+    compileMacroScript,
+    buildProfileSector
 } from './hidpp.js';
 
 class AppController {
@@ -147,8 +148,10 @@ class AppController {
         this.macroInstrMetric = document.getElementById('macroInstrMetric');
         this.macroBytecodeLength = document.getElementById('macroBytecodeLength');
         this.macroBytecodeHex = document.getElementById('macroBytecodeHex');
+        this.macroTargetButtonSelect = document.getElementById('macroTargetButtonSelect');
         this.btnAssignMacro = document.getElementById('btnAssignMacro');
         this.btnBurnMacroFlash = document.getElementById('btnBurnMacroFlash');
+        this.btnTestRunMacro = document.getElementById('btnTestRunMacro');
         this.presetChips = document.querySelectorAll('.preset-chip');
         this.insertButtons = document.querySelectorAll('.insert-btn');
 
@@ -411,6 +414,23 @@ class AppController {
 
         if (this.btnBurnMacroFlash) {
             this.btnBurnMacroFlash.addEventListener('click', () => this.burnMacroToFlash());
+        }
+
+        if (this.btnTestRunMacro) {
+            this.btnTestRunMacro.addEventListener('click', () => this.testRunMacro());
+        }
+
+        if (this.macroTargetButtonSelect) {
+            this.macroTargetButtonSelect.addEventListener('change', (e) => {
+                const newId = parseInt(e.target.value, 10);
+                this.selectedButtonId = newId;
+                const targetBtn = this.physicalButtons.find(b => b.id === newId);
+                if (targetBtn) {
+                    if (this.selectedButtonTitle) this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
+                    if (this.selectedButtonBadge) this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
+                    this.renderPhysicalButtons();
+                }
+            });
         }
 
         this.btnToggleSpy.addEventListener('click', async () => {
@@ -1130,6 +1150,7 @@ class AppController {
 
             item.addEventListener('click', () => {
                 this.selectedButtonId = btn.id;
+                if (this.macroTargetButtonSelect) this.macroTargetButtonSelect.value = btn.id.toString();
                 this.selectedButtonTitle.textContent = `${btn.name} Assignment`;
                 this.selectedButtonBadge.textContent = btn.defaultAction.label;
                 this.renderPhysicalButtons();
@@ -1206,6 +1227,7 @@ class AppController {
                 const targetBtn = this.physicalButtons.find(b => b.id === newlyPressedId);
                 if (targetBtn) {
                     this.selectedButtonId = newlyPressedId;
+                    if (this.macroTargetButtonSelect) this.macroTargetButtonSelect.value = newlyPressedId.toString();
                     this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
                     this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
                     this.renderPhysicalButtons();
@@ -1304,7 +1326,10 @@ class AppController {
             return;
         }
 
-        const targetBtn = this.physicalButtons.find(b => b.id === this.selectedButtonId);
+        const targetId = this.macroTargetButtonSelect ? parseInt(this.macroTargetButtonSelect.value, 10) : this.selectedButtonId;
+        this.selectedButtonId = targetId;
+
+        const targetBtn = this.physicalButtons.find(b => b.id === targetId);
         if (!targetBtn) return;
 
         const macroPage = (this.device && this.device.deviceInfo && this.device.deviceInfo.name.includes('G305')) ? 0x02 : 0x06;
@@ -1320,6 +1345,7 @@ class AppController {
             label: `Macro (Sector 0x0${macroPage})`
         };
 
+        if (this.selectedButtonTitle) this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
         if (this.selectedButtonBadge) {
             this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
         }
@@ -1339,15 +1365,64 @@ class AppController {
             return;
         }
 
-        const macroPage = this.device.deviceInfo.name.includes('G305') ? 2 : 6;
+        const targetId = this.macroTargetButtonSelect ? parseInt(this.macroTargetButtonSelect.value, 10) : this.selectedButtonId;
+        this.selectedButtonId = targetId;
+        const targetBtn = this.physicalButtons.find(b => b.id === targetId);
+        if (!targetBtn) {
+            this.showToast('Please select a target button first', 'error');
+            return;
+        }
+
+        const macroPage = (this.device && this.device.deviceInfo && this.device.deviceInfo.name.includes('G305')) ? 2 : 6;
+
+        // Assign macro to target button in data model
+        targetBtn.defaultAction = {
+            behavior: 0x00, // BUTTON_BEHAVIOR.EXECUTE_MACRO
+            type: 'macro',
+            value: macroPage,
+            page: macroPage,
+            offset: 0x0000,
+            script: this.macroScriptInput.value,
+            bytecode: comp.bytecode,
+            label: `Macro (Sector 0x0${macroPage})`
+        };
+
+        if (this.selectedButtonTitle) this.selectedButtonTitle.textContent = `${targetBtn.name} Assignment`;
+        if (this.selectedButtonBadge) this.selectedButtonBadge.textContent = targetBtn.defaultAction.label;
+        this.renderPhysicalButtons();
 
         try {
-            this.showToast(`Flashing ${comp.byteLength}B macro bytecode to Sector 0x0${macroPage}...`, 'info');
+            this.showToast(`1/3: Writing ${comp.byteLength}B macro bytecode to Sector 0x0${macroPage}...`, 'info');
             await this.device.writeMacro(comp.bytecode, macroPage);
-            this.showToast(`⚡ Macro bytecode successfully written & committed to Sector 0x0${macroPage}!`, 'success');
+
+            this.showToast(`2/3: Binding ${targetBtn.name} to Macro in Profile Sector #${this.currentSlot}...`, 'info');
+            const profileSector = buildProfileSector(this.physicalButtons);
+            await this.device.writeSector(this.currentSlot, profileSector);
+
+            this.showToast(`3/3: Committing Profile #${this.currentSlot} to Flash EEPROM...`, 'info');
+            await this.device.setActiveProfile(this.currentSlot);
+            await this.device.commitProfileToFlash(this.currentSlot);
+            await this.device.setOnboardMode(1);
+
+            this.showToast(`⚡ Success! Macro bound to ${targetBtn.name} & committed to Onboard Flash!`, 'success');
         } catch (err) {
             console.error('Error flashing macro:', err);
             this.showToast(`Failed to burn macro to flash: ${err.message}`, 'error');
+        }
+    }
+
+    async testRunMacro() {
+        if (!this.device.isConnected) {
+            this.showToast('Connect device to test run macro', 'error');
+            return;
+        }
+        const macroPage = (this.device && this.device.deviceInfo && this.device.deviceInfo.name.includes('G305')) ? 2 : 6;
+        try {
+            this.showToast('▶ Triggering macro execution on peripheral firmware...', 'info');
+            await this.device.executeMacro(macroPage, 0);
+            this.showToast('▶ Macro executed via Feature 0x8100 Fn 0x05!', 'success');
+        } catch (err) {
+            this.showToast(`Execute macro error: ${err.message}`, 'error');
         }
     }
 
@@ -1400,30 +1475,46 @@ class AppController {
             return;
         }
 
-        // Prepare 16-element remapping array
-        const mapArray = new Array(16).fill(0);
         let macroToBurn = null;
-
         for (let i = 0; i < this.physicalButtons.length && i < 16; i++) {
             const act = this.physicalButtons[i].defaultAction;
-            mapArray[i] = act.value || (i + 1);
-            if (act.type === 'macro' && act.bytecode) {
+            if (act && act.type === 'macro' && act.bytecode) {
                 macroToBurn = act;
             }
         }
 
         try {
-            // If any button has a macro assigned, burn its bytecode into the macro sector first
+            // 1. If any button has a macro assigned, burn its bytecode into Sector 6
             if (macroToBurn) {
-                const macroPage = macroToBurn.page || (this.device.deviceInfo.name.includes('G305') ? 2 : 6);
+                const macroPage = macroToBurn.page || 6;
+                this.showToast(`Flashing macro bytecode to Sector 0x0${macroPage}...`, 'info');
                 await this.device.writeMacro(macroToBurn.bytecode, macroPage);
             }
 
-            await this.device.setButtonRemappings(mapArray);
+            // 2. Build and write complete Profile Sector with all button bindings
+            this.showToast(`Writing Button bindings to Profile Sector #${this.currentSlot}...`, 'info');
+            const profileSector = buildProfileSector(this.physicalButtons);
+            await this.device.writeSector(this.currentSlot, profileSector);
+
+            // 3. Set wire remapping table if host mode is used
+            const mapArray = new Array(16).fill(0);
+            for (let i = 0; i < this.physicalButtons.length && i < 16; i++) {
+                const act = this.physicalButtons[i].defaultAction;
+                mapArray[i] = (act && act.type === 'mouse' && act.value) ? act.value : (i + 1);
+            }
+            try {
+                await this.device.setButtonRemappings(mapArray);
+            } catch (e) {}
+
+            // 4. Activate slot and commit to Flash EEPROM
+            await this.device.setActiveProfile(this.currentSlot);
             await this.device.commitProfileToFlash(this.currentSlot);
-            this.showToast('Remappings and macros committed to onboard EEPROM flash!', 'success');
+            await this.device.setOnboardMode(1);
+
+            this.showToast('All remappings and macros committed to onboard EEPROM flash!', 'success');
         } catch (err) {
-            this.showToast(err.message, 'error');
+            console.error('Commit error:', err);
+            this.showToast(`Commit failed: ${err.message}`, 'error');
         }
     }
 

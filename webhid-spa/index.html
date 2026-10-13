@@ -507,6 +507,24 @@
                                         </div>
                                     </div>
 
+                                    <!-- Target Button Selector -->
+                                    <div class="macro-target-selector-row">
+                                        <span class="target-btn-label">Target Button:</span>
+                                        <select id="macroTargetButtonSelect" class="macro-target-dropdown">
+                                            <option value="1">Button 1: Primary Click (Left)</option>
+                                            <option value="2" selected>Button 2: Secondary Click (Right)</option>
+                                            <option value="3">Button 3: Middle Click (Wheel)</option>
+                                            <option value="4">Button 4: Back Button</option>
+                                            <option value="5">Button 5: Forward Button</option>
+                                            <option value="6">Button 6: DPI Shift (Sniper)</option>
+                                            <option value="7">Button 7: DPI Down</option>
+                                            <option value="8">Button 8: DPI Up</option>
+                                            <option value="9">Button 9: Profile Switch</option>
+                                            <option value="10">Button 10: Wheel Tilt Left</option>
+                                            <option value="11">Button 11: Wheel Tilt Right</option>
+                                        </select>
+                                    </div>
+
                                     <!-- Quick Macro Templates / Presets -->
                                     <div class="macro-preset-row">
                                         <span class="preset-label">Templates:</span>
@@ -551,8 +569,9 @@ ENTER"></textarea>
                                     </div>
 
                                     <div class="macro-action-btn-row">
-                                        <button type="button" class="btn btn-primary btn-full" id="btnAssignMacro">Apply Macro to Selected Button</button>
-                                        <button type="button" class="btn btn-accent btn-full" id="btnBurnMacroFlash">⚡ Burn Macro Directly to Flash Sector</button>
+                                        <button type="button" class="btn btn-primary btn-full" id="btnAssignMacro">Apply Macro to Target Button</button>
+                                        <button type="button" class="btn btn-accent btn-full" id="btnBurnMacroFlash">⚡ Burn Macro & Commit to Onboard Memory</button>
+                                        <button type="button" class="btn btn-secondary btn-full" id="btnTestRunMacro">▶ Test Run Macro Now (Instant Host Execution)</button>
                                     </div>
                                 </div>
                             </div>

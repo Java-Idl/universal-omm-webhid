@@ -1141,6 +1141,43 @@ input:checked + .slider-toggle:before {
     border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.macro-target-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 229, 255, 0.06);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+}
+
+.target-btn-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary-cyan);
+    white-space: nowrap;
+}
+
+.macro-target-dropdown {
+    flex: 1;
+    background: rgba(10, 16, 26, 0.95);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition);
+}
+
+.macro-target-dropdown:focus {
+    border-color: var(--primary-cyan);
+    box-shadow: 0 0 10px var(--primary-cyan-glow);
+}
+
 .macro-preset-row {
     display: flex;
     align-items: center;
