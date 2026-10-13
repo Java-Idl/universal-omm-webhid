@@ -107,6 +107,135 @@
             </div>
         </header>
 
+        <!-- Live Hardware Configuration Dashboard (Shown when connected) -->
+        <section class="live-config-dashboard hidden" id="liveConfigDashboard">
+            <div class="dash-top-bar">
+                <div class="dash-title-group">
+                    <span class="live-pulse-dot"></span>
+                    <span class="dash-title">HARDWARE CONFIGURATION ON CONNECT</span>
+                    <span class="dash-chip" id="dashDeviceName">Logitech Peripheral</span>
+                    <span class="dash-chip-sub" id="dashFwVer">Firmware: Reading...</span>
+                </div>
+                <div class="dash-meta-pills">
+                    <span class="dash-pill badge-green" id="dashSyncStatus">Hardware Synchronized</span>
+                    <button class="btn btn-xs btn-outline" id="btnRefreshAllConfig" title="Re-query all hardware configurations from peripheral">
+                        ↻ Refresh Config
+                    </button>
+                </div>
+            </div>
+            
+            <div class="dash-cards-grid">
+                <!-- Card 1: Active DPI & Stages -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-cyan">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">SENSOR SENSITIVITY</span>
+                            <span class="dash-feat-tag">0x2201</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-metric-val" id="dashDpiVal">1,600 DPI</span>
+                            <span class="dash-status-pill badge-cyan" id="dashDpiStageBadge">Stage 3 / 5</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashDpiSub">Default: 1,000 DPI • Step: 50 DPI</div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Report Rate -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-purple">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">REPORT / POLLING RATE</span>
+                            <span class="dash-feat-tag">0x8060/61</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-metric-val" id="dashRateVal">1,000 Hz</span>
+                            <span class="dash-status-pill badge-green" id="dashRateBadge">1.0 ms Latency</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashRateSub">Tournament USB Polling Interval</div>
+                    </div>
+                </div>
+
+                <!-- Card 3: LIGHTSYNC RGB -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-amber">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">LIGHTSYNC RGB LIGHTING</span>
+                            <span class="dash-feat-tag">0x8070</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-rgb-indicator" id="dashRgbIndicator"></span>
+                            <span class="dash-metric-val" id="dashRgbVal">Static Color</span>
+                            <span class="dash-status-pill badge-cyan" id="dashRgbBadge">#00E5FF</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashRgbSub">Zone 0 & 1 • 3,000ms • 100% Brightness</div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Button Remappings -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-cyan">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">BUTTON MAPPINGS</span>
+                            <span class="dash-feat-tag">0x8110</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-metric-val" id="dashButtonVal">11 Switches</span>
+                            <span class="dash-status-pill badge-green" id="dashButtonBadge">Synchronized</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashButtonSub">Primary, Back, Forward, Sniper, Tilt Left/Right</div>
+                    </div>
+                </div>
+
+                <!-- Card 5: Profile & Onboard Mode -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-purple">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">ONBOARD FLASH MEMORY</span>
+                            <span class="dash-feat-tag">0x8100</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-metric-val" id="dashProfileVal">Slot #1</span>
+                            <span class="dash-status-pill badge-green" id="dashModeBadge">Onboard Mode Active</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashProfileSub">Default / FPS • 256B Flash EEPROM Sector</div>
+                    </div>
+                </div>
+
+                <!-- Card 6: Power & Transport -->
+                <div class="dash-card">
+                    <div class="dash-card-icon icon-green">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                    <div class="dash-card-body">
+                        <div class="dash-label-row">
+                            <span class="dash-label">POWER & TRANSPORT</span>
+                            <span class="dash-feat-tag">Hardware</span>
+                        </div>
+                        <div class="dash-metric-row">
+                            <span class="dash-metric-val" id="dashPowerVal">USB 5V Bus</span>
+                            <span class="dash-status-pill badge-green" id="dashPowerBadge">Continuous</span>
+                        </div>
+                        <div class="dash-desc-row" id="dashPowerSub">Unthrottled Bus Power • 1,000Hz Direct</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Navigation Tabs -->
         <nav class="nav-tabs-bar">
             <button class="nav-tab active" data-tab="sensor">

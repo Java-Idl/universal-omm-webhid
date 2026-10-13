@@ -17,6 +17,7 @@ export const HIDPP_FEATURES = {
     ADJUSTABLE_DPI: 0x2201,
     DPI_SENSOR: 0x2202,
     ANGLE_SNAPPING: 0x2240,
+    REPORT_RATE_LEGACY: 0x8060,
     REPORT_RATE: 0x8061,
     COLOR_LED: 0x8070,
     RGB_CLUSTER: 0x8071,
@@ -39,6 +40,7 @@ export const FEATURE_NAMES = {
     0x2201: 'AdjustableDPI',
     0x2202: 'SensorDPIParams',
     0x2240: 'AngleSnapping',
+    0x8060: 'ReportRateLegacy',
     0x8061: 'ReportRate',
     0x8070: 'ColorLED_RGB',
     0x8071: 'RGBCluster_v2',
@@ -265,10 +267,12 @@ export class HidppDevice {
         const featureId = this.indexFeatureMap.get(featIdx);
 
         // Feature 0x8110 (Button Spy Broadcasts)
-        if (featureId === HIDPP_FEATURES.BUTTON_SPY) {
+        // Only process asynchronous broadcasts (Fn 0x00 and Sw 0x00)
+        // Command responses (such as getRemapping Fn 0x03) must not be processed as button presses!
+        if (featureId === HIDPP_FEATURES.BUTTON_SPY && fnId === 0x00 && swId === 0x00) {
             const rawStatus = (u8[4] << 8) | u8[3];
             for (const cb of this.buttonEventListeners) {
-                try { cb({ rawStatus, data: Array.from(u8) }); } catch (e) {}
+                try { cb({ rawStatus, fnId, swId, data: Array.from(u8) }); } catch (e) {}
             }
         }
 
@@ -373,6 +377,7 @@ export class HidppDevice {
             HIDPP_FEATURES.ADJUSTABLE_DPI,
             HIDPP_FEATURES.DPI_SENSOR,
             HIDPP_FEATURES.ANGLE_SNAPPING,
+            HIDPP_FEATURES.REPORT_RATE_LEGACY,
             HIDPP_FEATURES.REPORT_RATE,
             HIDPP_FEATURES.COLOR_LED,
             HIDPP_FEATURES.RGB_CLUSTER,
@@ -476,8 +481,42 @@ export class HidppDevice {
         return dpi;
     }
 
+    async getFirmwareInfo(entity = 0) {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.DEVICE_INFO);
+        if (!featIdx) return null;
+        try {
+            const res = await this.sendCommand(featIdx, 0x01, [entity, 0x00, 0x00]);
+            if (res && res.length >= 11) {
+                const prefix = String.fromCharCode(...Array.from(res.slice(4, 7)).filter(b => b >= 32 && b <= 126));
+                const fwVer = `${res[7].toString(16).padStart(2, '0')}.${res[8].toString(16).padStart(2, '0')}`;
+                const fwBuild = `${res[9].toString(16).padStart(2, '0')}${res[10].toString(16).padStart(2, '0')}`;
+                return `${prefix} ${fwVer} (Build ${fwBuild})`.trim();
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    async getReportRate() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE) || 
+                        this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE_LEGACY);
+        if (!featIdx) return 1000;
+
+        try {
+            const res = await this.sendCommand(featIdx, 0x01, [0x00, 0x00, 0x00]);
+            if (res && res.length >= 5) {
+                const mask = res[4];
+                const maskMap = { 0x01: 1000, 0x02: 500, 0x04: 250, 0x08: 125 };
+                return maskMap[mask] || 1000;
+            }
+        } catch (e) {
+            console.error('getReportRate error:', e);
+        }
+        return 1000;
+    }
+
     async setReportRate(rateHz) {
-        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE);
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE) || 
+                        this.featureIndexMap.get(HIDPP_FEATURES.REPORT_RATE_LEGACY);
         if (featIdx) {
             const rateMap = { 1000: 0x01, 500: 0x02, 250: 0x04, 125: 0x08 };
             const mask = rateMap[rateHz] || 0x01;
@@ -491,6 +530,61 @@ export class HidppDevice {
      * LIGHTSYNC RGB Studio (0x8070)
      * Handles Static (1), Breathing (2), Color Cycle (3), Off (0)
      * ------------------------------------------------------------- */
+    async getLightingInfo() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
+        if (!featIdx) return null;
+        try {
+            const res = await this.sendCommand(featIdx, 0x00, [0x00, 0x00, 0x00]);
+            if (res && res.length >= 5) {
+                const zoneCount = res[4] || 1;
+                return { zoneCount };
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    async getLightingEffect(zone = 0) {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
+        if (!featIdx) return null;
+        try {
+            const res = await this.sendCommand(featIdx, 0x0E, [zone & 0xFF, 0x00, 0x00]);
+            if (res && res.length >= 6) {
+                const effectMode = res[5]; // 0=Off, 1=Static, 2=Breathing, 3=ColorCycle
+                let r = 0, g = 229, b = 255;
+                let periodMs = 3000;
+                let intensity = 100;
+
+                if (effectMode === 1) { // Static Color
+                    r = res[6] !== undefined ? res[6] : 0;
+                    g = res[7] !== undefined ? res[7] : 229;
+                    b = res[8] !== undefined ? res[8] : 255;
+                } else if (effectMode === 2) { // Breathing
+                    r = res[6] !== undefined ? res[6] : 0;
+                    g = res[7] !== undefined ? res[7] : 229;
+                    b = res[8] !== undefined ? res[8] : 255;
+                    periodMs = (res[9] << 8) | res[10];
+                    intensity = res[12] !== undefined ? res[12] : 100;
+                } else if (effectMode === 3) { // Color Cycle
+                    periodMs = (res[11] << 8) | res[12];
+                    intensity = res[13] !== undefined ? res[13] : 100;
+                }
+
+                const hex = '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+                return {
+                    zone,
+                    mode: effectMode,
+                    color: hex,
+                    r, g, b,
+                    period: periodMs || 3000,
+                    intensity: (intensity > 0 && intensity <= 100) ? intensity : 100
+                };
+            }
+        } catch (e) {
+            console.error('getLightingEffect error:', e);
+        }
+        return null;
+    }
+
     async setLightingEffect(zone, effectMode, r, g, b, periodMs = 3000, intensity = 100) {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.COLOR_LED);
         if (!featIdx) throw new Error('Color LED feature (0x8070) not available.');
@@ -573,6 +667,18 @@ export class HidppDevice {
     /* -------------------------------------------------------------
      * Button Remapping & Spy (0x8110)
      * ------------------------------------------------------------- */
+    async getButtonCount() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
+        if (!featIdx) return 11;
+        try {
+            const res = await this.sendCommand(featIdx, 0x00, [0x00, 0x00, 0x00]);
+            if (res && res.length >= 5) {
+                return res[4] || 11;
+            }
+        } catch (e) {}
+        return 11;
+    }
+
     async startButtonSpy() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
         if (!featIdx) return false;
@@ -596,11 +702,14 @@ export class HidppDevice {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.BUTTON_SPY);
         if (!featIdx) return null;
         try {
-            const res = await this.sendCommand(featIdx, 0x03, [0x00, 0x00, 0x00], true);
+            // Important: Request must be Short Report 0x10 (isLong = false)
+            const res = await this.sendCommand(featIdx, 0x03, [0x00, 0x00, 0x00], false);
             if (res && res.length >= 20) {
                 return Array.from(res.slice(4, 20));
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('getButtonRemappings error:', e);
+        }
         return null;
     }
 
@@ -618,6 +727,23 @@ export class HidppDevice {
     /* -------------------------------------------------------------
      * Onboard Profiles (0x8100)
      * ------------------------------------------------------------- */
+    async getOnboardProfilesInfo() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (!featIdx) return null;
+        try {
+            const res = await this.sendCommand(featIdx, 0x00, [0x00, 0x00, 0x00]);
+            if (res && res.length >= 8) {
+                return {
+                    formatVersion: res[4],
+                    sectorCount: res[5],
+                    profileFormat: res[6],
+                    profileCount: res[7]
+                };
+            }
+        } catch (e) {}
+        return null;
+    }
+
     async getOnboardMode() {
         const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
         if (!featIdx) return 1;
@@ -643,6 +769,18 @@ export class HidppDevice {
             return (res[4] << 8) | res[5];
         }
         return 1;
+    }
+
+    async getActiveProfileResolution() {
+        const featIdx = this.featureIndexMap.get(HIDPP_FEATURES.ONBOARD_PROFILES);
+        if (!featIdx) return 0;
+        try {
+            const res = await this.sendCommand(featIdx, 0x06, [0x00, 0x00, 0x00]);
+            if (res && res.length >= 6) {
+                return res[5] !== undefined ? res[5] : (res[4] || 0);
+            }
+        } catch (e) {}
+        return 0;
     }
 
     async setActiveProfile(sectorId) {
